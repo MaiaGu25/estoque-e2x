@@ -32,6 +32,25 @@ if errorlevel 1 (
   exit /b 0
 )
 
+node -e "process.exit(parseInt(process.versions.node) >= 22 ? 0 : 1)"
+if errorlevel 1 (
+  echo O Node.js instalado e uma versao antiga demais para este sistema.
+  echo Tentando atualizar automaticamente pelo Windows...
+  where winget >nul 2>nul
+  if errorlevel 1 (
+    echo.
+    echo Nao foi possivel atualizar automaticamente.
+    echo Baixe e instale o Node.js LTS mais recente em https://nodejs.org e execute este arquivo novamente.
+    pause
+    exit /b 1
+  )
+  winget upgrade OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+  echo.
+  echo Feche esta janela, abra um novo terminal e execute este arquivo novamente.
+  pause
+  exit /b 0
+)
+
 echo Preparando os componentes do sistema (requer internet)...
 call npm ci
 if errorlevel 1 (

@@ -4,7 +4,7 @@
   "private": true,
   "description": "Controle de estoque local da E2X - peças, ordens e movimentações.",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.5.0"
   },
   "scripts": {
     "build": "vite build --config client/vite.config.ts",
@@ -14,7 +14,6 @@
     "seed": "node server/seed/seed.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "express": "^4.21.2",

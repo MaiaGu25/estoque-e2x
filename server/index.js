@@ -3,6 +3,14 @@ const fs = require("fs");
 const express = require("express");
 const cookieParser = require("cookie-parser");
 
+// node:sqlite ainda é experimental no Node.js e imprime um aviso ao ser
+// carregado; suprime só esse aviso para não confundir quem só quer ver
+// "Estoque E2X rodando em..." na janela preta.
+process.removeAllListeners("warning");
+process.on("warning", (warning) => {
+  if (warning.name !== "ExperimentalWarning") console.warn(warning);
+});
+
 require("./db");
 require("./seed/seed").seed();
 

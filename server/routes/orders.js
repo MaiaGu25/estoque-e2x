@@ -1,12 +1,12 @@
 const express = require("express");
-const { db } = require("../db");
+const { db, transaction } = require("../db");
 const { requireAuth } = require("../auth");
 const { nowStamp } = require("../util");
 
 const router = express.Router();
 router.use(requireAuth);
 
-const createOrderTx = db.transaction((b, user) => {
+const createOrderTx = transaction((b, user) => {
   const now = nowStamp();
   const number = `${b.type === "ENTRADA" ? "ENT" : "OS"}-${now.slice(0, 10).replaceAll("-", "")}-${String(
     Date.now()

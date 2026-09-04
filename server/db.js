@@ -1,17 +1,33 @@
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
-const Database = require("better-sqlite3");
+const { DatabaseSync } = require("node:sqlite");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_PATH = path.join(DATA_DIR, "estoque.db");
-const db = new Database(DB_PATH);
+const db = new DatabaseSync(DB_PATH);
 
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
-db.pragma("busy_timeout = 5000");
+db.exec("PRAGMA journal_mode = WAL");
+db.exec("PRAGMA foreign_keys = ON");
+db.exec("PRAGMA busy_timeout = 5000");
+
+// node:sqlite não tem um helper de transação como o better-sqlite3;
+// envolve manualmente em BEGIN/COMMIT com rollback automático em erro.
+function transaction(fn) {
+  return (...args) => {
+    db.exec("BEGIN");
+    try {
+      const result = fn(...args);
+      db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  };
+}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -101,4 +117,4 @@ function getOrCreateSessionSecret() {
   return secret;
 }
 
-module.exports = { db, getMeta, setMeta, getOrCreateSessionSecret, DB_PATH };
+module.exports = { db, transaction, getMeta, setMeta, getOrCreateSessionSecret, DB_PATH };
