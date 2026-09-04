@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Archive, ArrowDownToLine, ArrowUpFromLine, BarChart3, Boxes, ChevronRight,
+  Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, BarChart3, Boxes, ChevronRight,
   ClipboardList, Download, History, LayoutDashboard, LogOut, Menu, PackagePlus,
   Pencil, Plus, RefreshCw, Search, ShieldCheck, TriangleAlert, Users as UsersIcon, X,
 } from "lucide-react";
@@ -13,7 +13,7 @@ const empty: Data = { parts: [], movements: [], orders: [], members: [], reasons
 const fmt = (n: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(n);
 const dt = (s: string) => new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
-export default function StockApp({ user, onLogout }: { user: User; onLogout: () => void }) {
+export default function StockApp({ user, onLogout, onHome }: { user: User; onLogout: () => void; onHome: () => void }) {
   const isAdmin = user.role === "admin";
   const tabs = [
     ["dashboard", "Visão geral", LayoutDashboard],
@@ -84,6 +84,10 @@ export default function StockApp({ user, onLogout }: { user: User; onLogout: () 
             <X />
           </button>
         </div>
+        <button className="nav-item back-to-hub" onClick={onHome}>
+          <ArrowLeft size={17} />
+          <span>Central E2X</span>
+        </button>
         <nav>
           {tabs.map(([id, label, Icon]) => (
             <button

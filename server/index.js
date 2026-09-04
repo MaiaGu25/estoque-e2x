@@ -19,10 +19,13 @@ const userRoutes = require("./routes/users");
 const partRoutes = require("./routes/parts");
 const orderRoutes = require("./routes/orders");
 const dataRoutes = require("./routes/data");
+const tecnicosRoutes = require("./routes/tecnicos");
+const testesRoutes = require("./routes/testes");
 
 const app = express();
 app.disable("x-powered-by");
-app.use(express.json({ limit: "2mb" }));
+// Limite maior por causa das fotos (base64) da Central de Testes.
+app.use(express.json({ limit: "12mb" }));
 app.use(cookieParser());
 
 app.use("/api/auth", authRoutes);
@@ -30,6 +33,8 @@ app.use("/api/users", userRoutes);
 app.use("/api/parts", partRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/data", dataRoutes);
+app.use("/api/tecnicos", tecnicosRoutes);
+app.use("/api/testes", testesRoutes);
 
 const clientDist = path.join(__dirname, "..", "dist", "client");
 if (fs.existsSync(clientDist)) {

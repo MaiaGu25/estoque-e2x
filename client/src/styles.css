@@ -18,3 +18,54 @@ button { cursor: pointer; }
 .login-brand strong{display:block;font-size:15px;letter-spacing:.06em;color:#0b2119}
 .login-brand span{display:block;color:#6f8279;font-size:12px;margin-top:3px}
 .login-card .primary{width:100%;height:46px;margin-top:6px}
+
+/* Hub central */
+.hub-screen{min-height:100vh;background:#f4f7f5}
+.hub-header{display:flex;align-items:center;padding:22px 34px;border-bottom:1px solid #dfe7e2;background:#fff}
+.hub-header .brand{padding:0}
+.hub-user{margin-left:auto;display:flex;align-items:center;gap:10px}
+.hub-user .avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#0b2119;color:#55eba4;font-weight:800}
+.hub-user strong{display:block;font-size:13px;color:#17221d}
+.hub-user span{display:flex;align-items:center;gap:4px;font-size:11px;color:#6f8279;margin-top:2px}
+.hub-user .icon-btn{color:#6f8279}
+.hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;padding:40px 34px;max-width:1100px;margin:0 auto}
+.hub-card{background:#fff;border:1px solid #e0e8e3;border-radius:18px;padding:28px;text-align:left;box-shadow:0 4px 16px #1c3e2f08;transition:.15s}
+.hub-card:hover{border-color:#50c98c;box-shadow:0 12px 30px #143b2818;transform:translateY(-2px)}
+.hub-card-icon{width:52px;height:52px;border-radius:14px;background:#eaf8f0;color:#0bad63;display:grid;place-items:center;margin-bottom:16px}
+.hub-card h2{margin:0 0 8px;font-size:18px}
+.hub-card p{margin:0;color:#6f8279;font-size:13px;line-height:1.5}
+
+/* Voltar para a central */
+.back-to-hub{margin-bottom:14px;color:#75d9aa!important}
+.back-to-hub:hover{background:#153429;color:#fff!important}
+
+/* Estoque dos técnicos */
+.tec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;padding:16px 21px}
+.tec-card{background:#fff;border:1px solid #e0e8e3;border-radius:10px;padding:14px;text-align:center}
+.tec-card span{display:block;font-size:12px;font-weight:700;color:#41534b;margin-bottom:6px}
+.tec-card strong{display:block;font-size:22px}
+.tec-card small{display:block;font-size:10px;font-weight:800;margin-top:2px}
+.tec-field-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6f8279;font-weight:800;margin:0 0 6px}
+.tec-machine-card{margin-bottom:10px}
+
+/* Central de testes */
+.testes-registrar{display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start}
+.testes-lado{background:#fff;border:1px solid #e0e8e3;border-radius:16px;padding:24px}
+.testes-direita{background:#fff;border:1px solid #e0e8e3;border-radius:16px;padding:20px}
+.testes-codigo-input{width:100%;height:52px;font-size:20px;border:1px solid #d9e3dd;border-radius:11px;padding:0 16px;outline:none}
+.testes-codigo-input:focus{border-color:#12b86a;box-shadow:0 0 0 3px #12b86a18}
+.testes-status{font-size:13px;color:#8a9d94;margin:8px 0 0}
+.testes-status.ok{color:#078348;font-weight:700}
+.testes-status.warn{color:#b83224;font-weight:700}
+.testes-responsavel{font-size:17px;font-weight:700;color:#17221d;margin:0}
+.testes-numero{font-size:30px;font-weight:800;color:#0bad63;margin:0}
+.testes-sucesso{display:flex;align-items:center;gap:8px;background:#def8e9;color:#078348;border-radius:10px;padding:11px 13px;font-size:13px;margin-top:12px}
+.testes-finalizar{width:100%;height:56px;font-size:15px;margin-top:20px}
+.testes-video-wrap{background:#0b1410;border-radius:12px;overflow:hidden;display:grid;place-items:center;min-height:280px}
+.testes-video-wrap video{width:100%;max-height:360px;object-fit:contain}
+.testes-fotos{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+.testes-foto-box{background:#f8faf9;border:1px solid #e8eeea;border-radius:12px;padding:14px}
+.testes-foto-preview{height:150px;background:#eef4f1;border-radius:9px;display:grid;place-items:center;margin-bottom:10px;overflow:hidden;color:#8a9d94;font-size:12px}
+.testes-foto-preview img{width:100%;height:100%;object-fit:cover}
+@media(max-width:1000px){.testes-registrar{grid-template-columns:1fr}}
+@media(max-width:600px){.testes-fotos{grid-template-columns:1fr}}

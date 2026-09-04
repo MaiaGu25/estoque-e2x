@@ -1,7 +1,11 @@
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const bcrypt = require("bcryptjs");
 const { db, transaction, getMeta, setMeta } = require("../db");
 const { initialParts, initialMovements } = require("./initial-data");
+const tecnicosData = require("./tecnicos-data");
+const { testes: testesIniciais } = require("./testes-data");
 
 function randomPassword() {
   return crypto.randomBytes(6).toString("base64url");
@@ -40,6 +44,76 @@ function seedInventoryIfEmpty() {
   console.log(`[seed] ${initialParts.length} peças e ${initialMovements.length} movimentações importadas.`);
 }
 
+function seedTecnicosIfEmpty() {
+  if (getMeta("tecnicos_seeded")) return;
+
+  const insertItem = db.prepare(
+    "INSERT INTO tec_itens (id,categoria,nome,quantidade,limite_baixo,ativo) VALUES (?,?,?,?,?,1)"
+  );
+  const insertConfig = db.prepare(
+    "INSERT INTO tec_configuracoes (id,nome,processador,ram,ssd,observacao,ativo) VALUES (?,?,?,?,?,?,1)"
+  );
+  const insertConfigItem = db.prepare(
+    "INSERT INTO tec_config_itens (configuracao_id,item_id,quantidade) VALUES (?,?,?)"
+  );
+  const insertMaquina = db.prepare(
+    "INSERT INTO tec_maquinas (configuracao_id,quantidade) VALUES (?,?)"
+  );
+  const insertMovimento = db.prepare(
+    "INSERT INTO tec_movimentos (tipo,alvo,quantidade,motivo,detalhe,responsible,created_by,created_at) VALUES (?,?,?,?,?,?,NULL,?)"
+  );
+
+  const run = transaction(() => {
+    for (const it of tecnicosData.itens) {
+      insertItem.run(it.id, it.categoria, it.nome, it.quantidade, it.limiteBaixo);
+    }
+    for (const c of tecnicosData.configuracoes) {
+      insertConfig.run(c.id, c.nome, c.processador, c.ram, c.ssd, c.observacao);
+    }
+    for (const ci of tecnicosData.configItens) {
+      insertConfigItem.run(ci.configuracaoId, ci.itemId, ci.quantidade);
+    }
+    for (const m of tecnicosData.maquinas) {
+      insertMaquina.run(m.configuracaoId, m.quantidade);
+    }
+    for (const mv of tecnicosData.movimentos) {
+      insertMovimento.run(mv.tipo, mv.alvo, mv.quantidade, mv.motivo, mv.detalhe, mv.responsavel, mv.dataHora);
+    }
+    db.prepare("UPDATE sqlite_sequence SET seq = ? WHERE name = 'tec_itens'").run(tecnicosData.itens.length);
+    db.prepare("UPDATE sqlite_sequence SET seq = ? WHERE name = 'tec_configuracoes'").run(tecnicosData.configuracoes.length);
+    setMeta("tecnicos_seeded", new Date().toISOString());
+  });
+  run();
+
+  console.log(`[seed] ${tecnicosData.itens.length} itens e ${tecnicosData.movimentos.length} movimentações do Estoque dos Técnicos importados.`);
+}
+
+function seedTestesIfEmpty() {
+  if (getMeta("testes_seeded")) return;
+
+  const FOTOS_SEED = path.join(__dirname, "testes-fotos");
+  const FOTOS_DIR = path.join(__dirname, "..", "..", "data", "testes");
+  const insert = db.prepare(
+    "INSERT INTO testes (codigo,numero_teste,responsible,created_by,created_at,foto_serial,foto_teste) VALUES (?,?,?,NULL,?,?,?)"
+  );
+
+  const run = transaction(() => {
+    testesIniciais.forEach((t, index) => {
+      const numero = index + 1;
+      const origem = path.join(FOTOS_SEED, t.codigo);
+      const destino = path.join(FOTOS_DIR, t.codigo);
+      fs.mkdirSync(destino, { recursive: true });
+      fs.copyFileSync(path.join(origem, "serial.jpg"), path.join(destino, "serial.jpg"));
+      fs.copyFileSync(path.join(origem, "teste.jpg"), path.join(destino, "teste.jpg"));
+      insert.run(t.codigo, numero, t.responsavel, t.createdAt, `${t.codigo}/serial.jpg`, `${t.codigo}/teste.jpg`);
+    });
+    setMeta("testes_seeded", new Date().toISOString());
+  });
+  run();
+
+  console.log(`[seed] ${testesIniciais.length} testes (com fotos) da Central de Testes importados.`);
+}
+
 function seedAdminUsersIfEmpty() {
   const count = db.prepare("SELECT COUNT(*) AS n FROM users").get().n;
   if (count > 0) return;
@@ -66,6 +140,8 @@ function seedAdminUsersIfEmpty() {
 
 function seed() {
   seedInventoryIfEmpty();
+  seedTecnicosIfEmpty();
+  seedTestesIfEmpty();
   seedAdminUsersIfEmpty();
 }
 
