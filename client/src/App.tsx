@@ -6,10 +6,11 @@ import Hub from "./Hub";
 import StockApp from "./StockApp";
 import TecnicosApp from "./TecnicosApp";
 import TestesApp from "./TestesApp";
+import RmaApp from "./RmaApp";
 import type { User } from "./types";
 
-type AppId = "estoque" | "tecnicos" | "testes";
-const VALID: AppId[] = ["estoque", "tecnicos", "testes"];
+type AppId = "estoque" | "tecnicos" | "testes" | "rma";
+const VALID: AppId[] = ["estoque", "tecnicos", "testes", "rma"];
 
 function readHash(): AppId | null {
   const id = window.location.hash.replace("#/", "");
@@ -62,5 +63,6 @@ export default function App() {
   if (active === "estoque") return <StockApp user={user} onLogout={logout} onHome={home} />;
   if (active === "tecnicos") return <TecnicosApp user={user} onLogout={logout} onHome={home} />;
   if (active === "testes") return <TestesApp user={user} onLogout={logout} onHome={home} />;
+  if (active === "rma") return <RmaApp user={user} onLogout={logout} onHome={home} />;
   return null;
 }

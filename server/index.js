@@ -21,6 +21,7 @@ const orderRoutes = require("./routes/orders");
 const dataRoutes = require("./routes/data");
 const tecnicosRoutes = require("./routes/tecnicos");
 const testesRoutes = require("./routes/testes");
+const rmaRoutes = require("./routes/rma");
 
 const app = express();
 app.disable("x-powered-by");
@@ -35,6 +36,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/data", dataRoutes);
 app.use("/api/tecnicos", tecnicosRoutes);
 app.use("/api/testes", testesRoutes);
+app.use("/api/rma", rmaRoutes);
 
 const clientDist = path.join(__dirname, "..", "dist", "client");
 if (fs.existsSync(clientDist)) {
