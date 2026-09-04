@@ -92,6 +92,65 @@ CREATE INDEX IF NOT EXISTS idx_movements_part ON movements(part_id);
 CREATE INDEX IF NOT EXISTS idx_movements_order ON movements(order_id);
 CREATE INDEX IF NOT EXISTS idx_movements_created_at ON movements(created_at);
 CREATE INDEX IF NOT EXISTS idx_parts_active ON parts(active);
+
+-- Módulo "Estoque dos Técnicos" (peças de bancada + máquinas montadas)
+CREATE TABLE IF NOT EXISTS tec_itens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  categoria TEXT NOT NULL,
+  nome TEXT NOT NULL UNIQUE,
+  quantidade INTEGER NOT NULL DEFAULT 0,
+  limite_baixo INTEGER NOT NULL DEFAULT 5,
+  ativo INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS tec_configuracoes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL UNIQUE,
+  processador TEXT NOT NULL DEFAULT '',
+  ram TEXT NOT NULL DEFAULT '',
+  ssd TEXT NOT NULL DEFAULT '',
+  observacao TEXT NOT NULL DEFAULT '',
+  ativo INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS tec_config_itens (
+  configuracao_id INTEGER NOT NULL REFERENCES tec_configuracoes(id),
+  item_id INTEGER NOT NULL REFERENCES tec_itens(id),
+  quantidade INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (configuracao_id, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS tec_maquinas (
+  configuracao_id INTEGER PRIMARY KEY REFERENCES tec_configuracoes(id),
+  quantidade INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS tec_movimentos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo TEXT NOT NULL,
+  alvo TEXT NOT NULL,
+  quantidade INTEGER NOT NULL,
+  motivo TEXT NOT NULL,
+  detalhe TEXT NOT NULL DEFAULT '',
+  responsible TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+-- Módulo "Central de Testes" (registro de testes de máquinas com fotos)
+CREATE TABLE IF NOT EXISTS testes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  codigo TEXT NOT NULL UNIQUE,
+  numero_teste INTEGER NOT NULL,
+  responsible TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  foto_serial TEXT NOT NULL,
+  foto_teste TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tec_movimentos_created_at ON tec_movimentos(created_at);
+CREATE INDEX IF NOT EXISTS idx_testes_created_at ON testes(created_at);
 `);
 
 function getMeta(key) {

@@ -61,3 +61,70 @@ export type Data = {
   members: Member[];
   reasons: Reason[];
 };
+
+// ---- Estoque dos Técnicos ----
+
+export type TecItem = {
+  id: number;
+  categoria: string;
+  nome: string;
+  quantidade: number;
+  limite_baixo: number;
+  ativo: number;
+};
+
+export type TecConfig = {
+  id: number;
+  nome: string;
+  processador: string;
+  ram: string;
+  ssd: string;
+  observacao: string;
+  ativo: number;
+  estoque_maquinas: number;
+};
+
+export type TecConfigItem = {
+  configuracao_id: number;
+  item_id: number;
+  quantidade: number;
+  nome: string;
+  categoria: string;
+};
+
+export type TecMovimento = {
+  id: number;
+  tipo: string;
+  alvo: string;
+  quantidade: number;
+  motivo: string;
+  detalhe: string;
+  responsible: string;
+  created_at: string;
+};
+
+export type TecnicosData = {
+  itens: TecItem[];
+  configuracoes: TecConfig[];
+  configItens: TecConfigItem[];
+  movimentos: TecMovimento[];
+};
+
+// ---- Central de Testes ----
+
+export type Teste = {
+  id: number;
+  codigo: string;
+  numero_teste: number;
+  responsible: string;
+  created_at: string;
+  foto_serial: string;
+  foto_teste: string;
+};
+
+export type TestesStats = {
+  total: number;
+  hoje: number;
+  ultimo: Teste | null;
+  porResponsavel: { responsible: string; quantidade: number }[];
+};
