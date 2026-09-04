@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const { db, getMeta, setMeta } = require("../db");
+const { db, transaction, getMeta, setMeta } = require("../db");
 const { initialParts, initialMovements } = require("./initial-data");
 
 function randomPassword() {
@@ -17,7 +17,7 @@ function seedInventoryIfEmpty() {
     "INSERT INTO movements (id,part_id,order_id,type,quantity,previous_balance,new_balance,reason,responsible,notes,created_by,created_at) VALUES (?,?,NULL,?,?,?,?,?,?,?,NULL,?)"
   );
 
-  const run = db.transaction(() => {
+  const run = transaction(() => {
     for (const p of initialParts) {
       insertPart.run(
         p.id, p.code, p.name, p.category, p.unit, p.location,
