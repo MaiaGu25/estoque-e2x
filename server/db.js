@@ -151,6 +151,44 @@ CREATE TABLE IF NOT EXISTS testes (
 
 CREATE INDEX IF NOT EXISTS idx_tec_movimentos_created_at ON tec_movimentos(created_at);
 CREATE INDEX IF NOT EXISTS idx_testes_created_at ON testes(created_at);
+
+-- Módulo "RMA / SAC" (devoluções de clientes vindas das plataformas)
+CREATE TABLE IF NOT EXISTS rma_casos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero TEXT NOT NULL UNIQUE,
+  plataforma TEXT NOT NULL,
+  pedido TEXT NOT NULL DEFAULT '',
+  produto TEXT NOT NULL DEFAULT '',
+  cliente TEXT NOT NULL DEFAULT '',
+  motivo_cliente TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'aguardando_devolucao'
+    CHECK(status IN ('aguardando_devolucao','recebido','em_inspecao','concluido')),
+  culpa TEXT CHECK(culpa IN ('nossa','cliente')),
+  laudo_tecnico TEXT NOT NULL DEFAULT '',
+  desfecho TEXT CHECK(desfecho IN ('reembolso_cliente','cobranca_plataforma')),
+  valor REAL,
+  disputa_status TEXT CHECK(disputa_status IN ('nao_aberta','aberta','ganha','perdida')),
+  tecnico_responsavel TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  resolved_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS rma_eventos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  caso_id INTEGER NOT NULL REFERENCES rma_casos(id),
+  tipo TEXT NOT NULL,
+  texto TEXT NOT NULL DEFAULT '',
+  foto TEXT,
+  responsible TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rma_casos_status ON rma_casos(status);
+CREATE INDEX IF NOT EXISTS idx_rma_casos_created_at ON rma_casos(created_at);
+CREATE INDEX IF NOT EXISTS idx_rma_eventos_caso ON rma_eventos(caso_id);
 `);
 
 function getMeta(key) {
