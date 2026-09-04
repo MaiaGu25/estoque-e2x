@@ -25,12 +25,12 @@ echo Sera usado: %ULTIMO%
 set /p "CONFIRMA=Digite SIM para continuar: "
 if /I not "!CONFIRMA!"=="SIM" exit /b 0
 
-if exist ".wrangler\state" (
+if exist "data" (
   for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "STAMP=%%i"
-  move ".wrangler\state" ".wrangler\state_antes_restauracao_!STAMP!" >nul
+  move "data" "data_antes_restauracao_!STAMP!" >nul
 )
-mkdir ".wrangler\state" >nul 2>nul
-robocopy "%RAIZ%\%ULTIMO%\state" ".wrangler\state" /E /R:2 /W:1 >nul
+mkdir "data" >nul 2>nul
+robocopy "%RAIZ%\%ULTIMO%\data" "data" /E /R:2 /W:1 >nul
 
 echo.
 echo Backup restaurado com sucesso.

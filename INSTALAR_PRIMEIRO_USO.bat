@@ -32,7 +32,7 @@ if errorlevel 1 (
   exit /b 0
 )
 
-echo Preparando os componentes do sistema...
+echo Preparando os componentes do sistema (requer internet)...
 call npm ci
 if errorlevel 1 (
   echo.
@@ -41,7 +41,18 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist "E:\Estoque_E2X\Backups" mkdir "E:\Estoque_E2X\Backups"
+echo.
+echo Preparando a interface do sistema...
+call npm run build
+if errorlevel 1 (
+  echo.
+  echo Nao foi possivel preparar a interface do sistema.
+  pause
+  exit /b 1
+)
+
+if not exist "E:\Estoque_E2X\Backups" mkdir "E:\Estoque_E2X\Backups" >nul 2>nul
+
 echo.
 echo Instalacao concluida.
 echo Agora use INICIAR_ESTOQUE.bat.

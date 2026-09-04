@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-title Estoque E2X Igor
+title Estoque E2X
 
 where node >nul 2>nul
 if errorlevel 1 (
@@ -9,6 +9,11 @@ if errorlevel 1 (
   exit /b 1
 )
 if not exist "node_modules" (
+  echo Execute INSTALAR_PRIMEIRO_USO.bat antes de iniciar.
+  pause
+  exit /b 1
+)
+if not exist "dist\client\index.html" (
   echo Execute INSTALAR_PRIMEIRO_USO.bat antes de iniciar.
   pause
   exit /b 1
@@ -26,6 +31,6 @@ echo Mantenha esta janela aberta enquanto o sistema estiver em uso.
 echo Para encerrar, pressione CTRL+C.
 echo.
 
-start "" powershell -NoProfile -Command "Start-Sleep -Seconds 5; Start-Process 'http://localhost:3000'"
-call npm run dev -- --host 0.0.0.0 --port 3000
+start "" powershell -NoProfile -Command "Start-Sleep -Seconds 3; Start-Process 'http://localhost:3000'"
+call npm start
 pause
