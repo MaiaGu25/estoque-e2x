@@ -1,0 +1,32 @@
+ESTOQUE E2X IGOR - WINDOWS 10
+==========================================
+
+PRIMEIRO USO
+1. Copie ou extraia esta pasta no computador que vai servir o sistema.
+2. Deixe o SSD externo conectado como unidade E:.
+3. Clique duas vezes em INSTALAR_PRIMEIRO_USO.bat.
+4. Depois, clique duas vezes em INICIAR_ESTOQUE.bat.
+
+USO DIARIO
+- Abra o sistema com INICIAR_ESTOQUE.bat.
+- Mantenha a janela preta aberta enquanto outras pessoas estiverem usando.
+- Neste computador, o endereço é http://localhost:3000.
+- Para descobrir o endereço dos outros computadores, execute DESCOBRIR_IP.bat.
+
+BACKUP
+- Conecte o SSD como E:.
+- Feche o sistema para garantir uma cópia consistente.
+- Execute FAZER_BACKUP.bat.
+- Os backups ficam em E:\Estoque_E2X\Backups.
+
+RESTAURACAO
+- Feche o sistema.
+- Execute RESTAURAR_ULTIMO_BACKUP.bat.
+- Digite SIM quando solicitado.
+
+IMPORTANTE
+- O computador principal precisa permanecer ligado para os outros acessarem.
+- Todos devem estar na mesma rede local.
+- No primeiro uso, a instalação precisa de internet.
+- Depois de instalado, o sistema e o banco funcionam localmente.
+- Se o Windows perguntar sobre Firewall, permita o acesso em redes privadas.
