@@ -232,6 +232,20 @@ CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_created_at ON pecas_fornecedor(c
 CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_eventos_peca ON pecas_fornecedor_eventos(peca_id);
 `);
 
+function columnExists(table, column) {
+  return db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+}
+
+// pecas_fornecedor existia sem agrupamento por pedido; adiciona a coluna
+// em bancos já criados, sem mexer nos dados existentes.
+if (!columnExists("pecas_fornecedor", "pedido_numero")) {
+  db.exec("ALTER TABLE pecas_fornecedor ADD COLUMN pedido_numero TEXT NOT NULL DEFAULT ''");
+}
+// Peças cadastradas antes do agrupamento por pedido ficam sem número;
+// dá um número sintético para cada uma virar um "pedido" de 1 item.
+db.exec("UPDATE pecas_fornecedor SET pedido_numero = 'LEG-' || id WHERE pedido_numero = ''");
+db.exec("CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_pedido ON pecas_fornecedor(pedido_numero)");
+
 function getMeta(key) {
   const row = db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key);
   return row ? row.value : null;

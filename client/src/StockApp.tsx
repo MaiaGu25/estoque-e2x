@@ -65,6 +65,15 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
         );
   }, [data.parts, search]);
 
+  const filteredMovements = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase("pt-BR");
+    return !q
+      ? data.movements
+      : data.movements.filter((m) =>
+          (m.code + " " + m.part_name + " " + m.reason + " " + m.responsible).toLocaleLowerCase("pt-BR").includes(q)
+        );
+  }, [data.movements, search]);
+
   const low = data.parts.filter((p) => p.quantity <= p.minimum_stock);
   const total = data.parts.reduce((s, p) => s + p.quantity, 0);
   const week = data.movements.filter((m) => Date.now() - new Date(m.created_at.replace(" ", "T") + "Z").getTime() < 7 * 864e5);
@@ -308,6 +317,7 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
             )}
             {tab === "historico" && (
               <section>
+                <Toolbar search={search} setSearch={setSearch} placeholder="Buscar por motivo (ex.: RMA), código, peça ou responsável…" />
                 <div className="filters">
                   <div>
                     <label>Data inicial</label>
@@ -331,8 +341,8 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
                     Limpar
                   </button>
                 </div>
-                <Panel title="Histórico completo" subtitle={`${data.movements.length} movimentações encontradas`}>
-                  <MovementTable rows={data.movements} />
+                <Panel title="Histórico completo" subtitle={`${filteredMovements.length} movimentações encontradas`}>
+                  <MovementTable rows={filteredMovements} />
                 </Panel>
               </section>
             )}
@@ -413,7 +423,19 @@ function Panel({ title, subtitle, action, onAction, children }: { title: string;
   );
 }
 
-function Toolbar({ search, setSearch, placeholder, action, onAction }: { search: string; setSearch: (v: string) => void; placeholder: string; action: string; onAction: () => void }) {
+function Toolbar({
+  search,
+  setSearch,
+  placeholder,
+  action,
+  onAction,
+}: {
+  search: string;
+  setSearch: (v: string) => void;
+  placeholder: string;
+  action?: string;
+  onAction?: () => void;
+}) {
   return (
     <div className="toolbar">
       <div className="search">
@@ -425,10 +447,12 @@ function Toolbar({ search, setSearch, placeholder, action, onAction }: { search:
           </button>
         )}
       </div>
-      <button className="primary" onClick={onAction}>
-        <Plus size={17} />
-        {action}
-      </button>
+      {action && onAction && (
+        <button className="primary" onClick={onAction}>
+          <Plus size={17} />
+          {action}
+        </button>
+      )}
     </div>
   );
 }

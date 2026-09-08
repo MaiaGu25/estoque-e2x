@@ -1,18 +1,32 @@
 import { useEffect, useState } from "react";
 import {
-  Archive, ArrowLeft, BarChart3, ClipboardList, LogOut, Menu,
+  Archive, ArrowLeft, BarChart3, ClipboardList, FileSpreadsheet, LogOut, Menu,
   MessageSquarePlus, Plus, RefreshCw, Search, ShieldCheck, Truck,
   TriangleAlert, X,
 } from "lucide-react";
 import { api } from "./api";
 import type {
   Fornecedor, Part, PecaFornecedor, PecaFornecedorEvento, PecaFornecedorStatus,
-  PecasFornecedorStats, User,
+  PecasFornecedorStats, PedidoFornecedor, User,
 } from "./types";
 import { useRealtime } from "./useRealtime";
 
 const fmt = (n: number) => new Intl.NumberFormat("pt-BR").format(n);
 const dt = (s: string) => new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+
+function baixarPlanilha(params: Record<string, string>) {
+  const qs = new URLSearchParams(params).toString();
+  window.open(`/api/pecas-fornecedor/planilha${qs ? "?" + qs : ""}`, "_blank");
+}
+
+function resumoStatusPedido(p: Pick<PedidoFornecedor, "aguardando_envio" | "aguardando_fornecedor" | "trocada" | "recusada">) {
+  const partes: string[] = [];
+  if (p.aguardando_envio) partes.push(`${p.aguardando_envio} aguard. envio`);
+  if (p.aguardando_fornecedor) partes.push(`${p.aguardando_fornecedor} aguard. fornecedor`);
+  if (p.trocada) partes.push(`${p.trocada} trocada${p.trocada > 1 ? "s" : ""}`);
+  if (p.recusada) partes.push(`${p.recusada} recusada${p.recusada > 1 ? "s" : ""}`);
+  return partes.join(", ") || "—";
+}
 
 const STATUS_LABEL: Record<PecaFornecedorStatus, string> = {
   aguardando_envio: "Aguardando envio",
@@ -30,14 +44,14 @@ const STATUS_CLASS: Record<PecaFornecedorStatus, string> = {
 export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: User; onLogout: () => void; onHome: () => void }) {
   const tabs = [
     ["painel", "Painel", BarChart3],
-    ["pecas", "Peças", ClipboardList],
+    ["ordens", "Ordens", ClipboardList],
     ["fornecedores", "Fornecedores", Truck],
   ] as const;
 
   const [tab, setTab] = useState<string>("painel");
   const [mobile, setMobile] = useState(false);
   const [modalNova, setModalNova] = useState(false);
-  const [pecaAberta, setPecaAberta] = useState<number | null>(null);
+  const [pedidoAberto, setPedidoAberto] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [estoquePecas, setEstoquePecas] = useState<Part[]>([]);
@@ -118,21 +132,23 @@ export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: U
             <button className="secondary" onClick={recarregar}>
               <RefreshCw size={16} /> Atualizar
             </button>
-            {tab === "pecas" && (
+            {tab === "ordens" && (
               <button
                 className="primary"
                 onClick={() => setModalNova(true)}
                 disabled={!fornecedores.length}
                 title={fornecedores.length ? undefined : "Cadastre um fornecedor primeiro, na aba Fornecedores"}
               >
-                <Plus size={17} /> Nova peça
+                <Plus size={17} /> Nova ordem
               </button>
             )}
           </div>
         </header>
 
-        {tab === "painel" && <PainelTab refreshKey={refreshKey} onAbrirPeca={(id) => setPecaAberta(id)} />}
-        {tab === "pecas" && <PecasTab refreshKey={refreshKey} fornecedores={fornecedores} onAbrirPeca={(id) => setPecaAberta(id)} />}
+        {tab === "painel" && <PainelTab refreshKey={refreshKey} onAbrirPedido={(numero) => setPedidoAberto(numero)} />}
+        {tab === "ordens" && (
+          <OrdensTab refreshKey={refreshKey} fornecedores={fornecedores} onAbrirPedido={(numero) => setPedidoAberto(numero)} />
+        )}
         {tab === "fornecedores" && <FornecedoresTab fornecedores={fornecedores} onAtualizado={recarregar} />}
       </main>
       {mobile && <div className="scrim" onClick={() => setMobile(false)} />}
@@ -142,15 +158,15 @@ export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: U
           fornecedores={fornecedores}
           estoquePecas={estoquePecas}
           onClose={() => setModalNova(false)}
-          onCriada={(ids) => {
+          onCriada={(pedidoNumero) => {
             setModalNova(false);
             recarregar();
-            if (ids.length === 1) setPecaAberta(ids[0]);
+            setPedidoAberto(pedidoNumero);
           }}
         />
       )}
-      {pecaAberta !== null && (
-        <DetalhePecaModal id={pecaAberta} onClose={() => setPecaAberta(null)} onAtualizado={recarregar} />
+      {pedidoAberto !== null && (
+        <PedidoDetalheModal numero={pedidoAberto} onClose={() => setPedidoAberto(null)} onAtualizado={recarregar} />
       )}
     </div>
   );
@@ -195,13 +211,13 @@ function Empty({ text }: { text: string }) {
   );
 }
 
-function PainelTab({ refreshKey, onAbrirPeca }: { refreshKey: number; onAbrirPeca: (id: number) => void }) {
+function PainelTab({ refreshKey, onAbrirPedido }: { refreshKey: number; onAbrirPedido: (numero: string) => void }) {
   const [stats, setStats] = useState<PecasFornecedorStats | null>(null);
-  const [recentes, setRecentes] = useState<PecaFornecedor[]>([]);
+  const [recentes, setRecentes] = useState<PedidoFornecedor[]>([]);
 
   useEffect(() => {
     api.get<PecasFornecedorStats>("/api/pecas-fornecedor/stats").then(setStats).catch(() => {});
-    api.get<{ pecas: PecaFornecedor[] }>("/api/pecas-fornecedor/pecas").then((r) => setRecentes(r.pecas.slice(0, 8))).catch(() => {});
+    api.get<{ pedidos: PedidoFornecedor[] }>("/api/pecas-fornecedor/pedidos").then((r) => setRecentes(r.pedidos.slice(0, 8))).catch(() => {});
   }, [refreshKey]);
 
   const emAndamento = stats?.porStatus.filter((s) => s.status !== "trocada" && s.status !== "recusada").reduce((s, r) => s + r.n, 0) || 0;
@@ -215,33 +231,31 @@ function PainelTab({ refreshKey, onAbrirPeca }: { refreshKey: number; onAbrirPec
       </div>
 
       <div className="grid-two">
-        <Panel title="Peças recentes">
+        <Panel title="Ordens recentes">
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Código</th>
-                  <th>Descrição</th>
+                  <th>Pedido</th>
                   <th>Fornecedor</th>
+                  <th>Peças</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {recentes.map((p) => (
-                  <tr key={p.id} onClick={() => onAbrirPeca(p.id)} style={{ cursor: "pointer" }}>
+                  <tr key={p.pedido_numero} onClick={() => onAbrirPedido(p.pedido_numero)} style={{ cursor: "pointer" }}>
                     <td>
-                      <b className="code">{p.codigo || "—"}</b>
+                      <b className="code">{p.pedido_numero}</b>
                     </td>
-                    <td>{p.descricao}</td>
                     <td>{p.fornecedor_nome}</td>
-                    <td>
-                      <StatusBadge status={p.status} />
-                    </td>
+                    <td>{fmt(p.total_pecas)}</td>
+                    <td>{resumoStatusPedido(p)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {!recentes.length && <Empty text="Nenhuma peça registrada ainda." />}
+            {!recentes.length && <Empty text="Nenhuma ordem registrada ainda." />}
           </div>
         </Panel>
         <Panel title="Fornecedores que mais dão RMA">
@@ -292,27 +306,32 @@ function PainelTab({ refreshKey, onAbrirPeca }: { refreshKey: number; onAbrirPec
   );
 }
 
-function PecasTab({
+function OrdensTab({
   refreshKey,
   fornecedores,
-  onAbrirPeca,
+  onAbrirPedido,
 }: {
   refreshKey: number;
   fornecedores: Fornecedor[];
-  onAbrirPeca: (id: number) => void;
+  onAbrirPedido: (numero: string) => void;
 }) {
-  const [pecas, setPecas] = useState<PecaFornecedor[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoFornecedor[]>([]);
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState("");
   const [fornecedorId, setFornecedorId] = useState("");
 
+  const filtros = () => {
+    const params: Record<string, string> = {};
+    if (busca) params.busca = busca;
+    if (status) params.status = status;
+    if (fornecedorId) params.fornecedorId = fornecedorId;
+    return params;
+  };
+
   const carregar = async () => {
-    const params = new URLSearchParams();
-    if (busca) params.set("busca", busca);
-    if (status) params.set("status", status);
-    if (fornecedorId) params.set("fornecedorId", fornecedorId);
-    const r = await api.get<{ pecas: PecaFornecedor[] }>(`/api/pecas-fornecedor/pecas?${params.toString()}`);
-    setPecas(r.pecas);
+    const params = new URLSearchParams(filtros());
+    const r = await api.get<{ pedidos: PedidoFornecedor[] }>(`/api/pecas-fornecedor/pedidos?${params.toString()}`);
+    setPedidos(r.pedidos);
   };
 
   useEffect(() => {
@@ -325,7 +344,7 @@ function PecasTab({
       <div className="filters">
         <div>
           <label>Buscar</label>
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Código, serial, descrição, EAN" />
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pedido, código, serial, descrição, EAN" />
         </div>
         <div>
           <label>Status</label>
@@ -352,43 +371,37 @@ function PecasTab({
         <button className="primary" onClick={carregar}>
           <Search size={15} /> Filtrar
         </button>
+        <button className="secondary" onClick={() => baixarPlanilha(filtros())}>
+          <FileSpreadsheet size={16} /> Gerar planilha
+        </button>
       </div>
 
       <div className="table-card">
         <table>
           <thead>
             <tr>
-              <th>Código</th>
-              <th>Serial</th>
-              <th>Descrição</th>
-              <th>Marca</th>
+              <th>Pedido</th>
               <th>Fornecedor</th>
+              <th>Peças</th>
               <th>Status</th>
               <th>Data</th>
             </tr>
           </thead>
           <tbody>
-            {pecas.map((p) => (
-              <tr key={p.id} onClick={() => onAbrirPeca(p.id)} style={{ cursor: "pointer" }}>
+            {pedidos.map((p) => (
+              <tr key={p.pedido_numero} onClick={() => onAbrirPedido(p.pedido_numero)} style={{ cursor: "pointer" }}>
                 <td>
-                  <b className="code">{p.codigo || "—"}</b>
+                  <b className="code">{p.pedido_numero}</b>
                 </td>
-                <td>{p.serial || "—"}</td>
-                <td>
-                  <strong>{p.descricao}</strong>
-                  {p.defeito && <small>{p.defeito}</small>}
-                </td>
-                <td>{p.marca || "—"}</td>
                 <td>{p.fornecedor_nome}</td>
-                <td>
-                  <StatusBadge status={p.status} />
-                </td>
+                <td>{fmt(p.total_pecas)}</td>
+                <td>{resumoStatusPedido(p)}</td>
                 <td>{dt(p.created_at)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {!pecas.length && <Empty text="Nenhuma peça encontrada." />}
+        {!pedidos.length && <Empty text="Nenhum pedido encontrado." />}
       </div>
     </section>
   );
@@ -553,7 +566,7 @@ function NovaPecaModal({
   fornecedores: Fornecedor[];
   estoquePecas: Part[];
   onClose: () => void;
-  onCriada: (ids: number[]) => void;
+  onCriada: (pedidoNumero: string) => void;
 }) {
   const [fornecedorId, setFornecedorId] = useState(fornecedores[0]?.id || 0);
   const [rmaRelacionado, setRmaRelacionado] = useState("");
@@ -591,12 +604,12 @@ function NovaPecaModal({
     if (semDescricao !== -1) return setErr(`Peça ${semDescricao + 1} da lista está sem descrição.`);
     setSaving(true);
     try {
-      const res = await api.post<{ ok: boolean; ids: number[] }>("/api/pecas-fornecedor/pecas/lote", {
+      const res = await api.post<{ ok: boolean; pedidoNumero: string; ids: number[] }>("/api/pecas-fornecedor/pecas/lote", {
         fornecedorId,
         rmaRelacionado,
         itens: itens.map(({ codigo, descricao, serial, defeito }) => ({ codigo, descricao, serial, defeito })),
       });
-      onCriada(res.ids);
+      onCriada(res.pedidoNumero);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Não foi possível cadastrar as peças.");
     } finally {
@@ -605,7 +618,7 @@ function NovaPecaModal({
   };
 
   return (
-    <Modal title="Novas peças para o fornecedor" subtitle="Monte a lista de peças defeituosas antes de enviar ao fornecedor." onClose={onClose}>
+    <Modal title="Nova ordem para o fornecedor" subtitle="Monte a lista de peças defeituosas antes de enviar ao fornecedor." onClose={onClose}>
       <div className="form-grid">
         <Field label="Fornecedor *">
           <select value={fornecedorId} onChange={(e) => setFornecedorId(Number(e.target.value))}>
@@ -688,6 +701,111 @@ function NovaPecaModal({
         </button>
       </div>
     </Modal>
+  );
+}
+
+function PedidoDetalheModal({
+  numero,
+  onClose,
+  onAtualizado,
+}: {
+  numero: string;
+  onClose: () => void;
+  onAtualizado: () => void;
+}) {
+  const [pedido, setPedido] = useState<{ pedidoNumero: string; fornecedorNome: string; createdAt: string; pecas: PecaFornecedor[] } | null>(null);
+  const [err, setErr] = useState("");
+  const [pecaAberta, setPecaAberta] = useState<number | null>(null);
+
+  const carregar = async () => {
+    try {
+      const r = await api.get<{ pedidoNumero: string; fornecedorNome: string; createdAt: string; pecas: PecaFornecedor[] }>(
+        `/api/pecas-fornecedor/pedidos/${numero}`
+      );
+      setPedido(r);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível carregar o pedido.");
+    }
+  };
+
+  useEffect(() => {
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numero]);
+
+  if (err) {
+    return (
+      <Modal title="Pedido" onClose={onClose}>
+        <div className="error">{err}</div>
+      </Modal>
+    );
+  }
+
+  if (!pedido) {
+    return (
+      <Modal title="Carregando…" onClose={onClose}>
+        <div className="loading" style={{ minHeight: 200 }}>
+          <RefreshCw className="spin" />
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <>
+      <Modal
+        title={pedido.pedidoNumero}
+        subtitle={`Fornecedor: ${pedido.fornecedorNome} · registrado em ${dt(pedido.createdAt)} · ${pedido.pecas.length} peça${pedido.pecas.length === 1 ? "" : "s"}`}
+        onClose={onClose}
+      >
+        <div className="table-card" style={{ marginBottom: 16 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Descrição</th>
+                <th>Serial</th>
+                <th>Defeito</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pedido.pecas.map((p) => (
+                <tr key={p.id} onClick={() => setPecaAberta(p.id)} style={{ cursor: "pointer" }}>
+                  <td>
+                    <b className="code">{p.codigo || "—"}</b>
+                  </td>
+                  <td>{p.descricao}</td>
+                  <td>{p.serial || "—"}</td>
+                  <td>{p.defeito || "—"}</td>
+                  <td>
+                    <StatusBadge status={p.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="modal-actions">
+          <button className="secondary" onClick={() => baixarPlanilha({ pedidoNumero: pedido.pedidoNumero })}>
+            <FileSpreadsheet size={16} /> Gerar planilha
+          </button>
+          <button className="primary" onClick={onClose}>
+            Fechar
+          </button>
+        </div>
+      </Modal>
+      {pecaAberta !== null && (
+        <DetalhePecaModal
+          id={pecaAberta}
+          onClose={() => setPecaAberta(null)}
+          onAtualizado={() => {
+            carregar();
+            onAtualizado();
+          }}
+        />
+      )}
+    </>
   );
 }
 

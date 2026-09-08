@@ -200,8 +200,22 @@ export type PecaFornecedor = {
   status: PecaFornecedorStatus;
   rma_relacionado: string;
   observacoes: string;
+  pedido_numero: string;
   created_at: string;
   updated_at: string;
+};
+
+export type PedidoFornecedor = {
+  pedido_numero: string;
+  fornecedor_id: number;
+  fornecedor_nome: string;
+  total_pecas: number;
+  created_at: string;
+  updated_at: string;
+  aguardando_envio: number;
+  aguardando_fornecedor: number;
+  trocada: number;
+  recusada: number;
 };
 
 export type PecaFornecedorEvento = {
