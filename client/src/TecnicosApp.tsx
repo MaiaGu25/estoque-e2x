@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import type { TecConfig, TecConfigItem, TecItem, TecMovimento, TecnicosData, User } from "./types";
+import { useRealtime } from "./useRealtime";
 
 const empty: TecnicosData = { itens: [], configuracoes: [], configItens: [], movimentos: [] };
 const fmt = (n: number) => new Intl.NumberFormat("pt-BR").format(n);
@@ -34,18 +35,19 @@ export default function TecnicosApp({ user, onLogout, onHome }: { user: User; on
   const [modal, setModal] = useState<null | "entrada" | "saida" | "config" | "montar" | "retirar" | "desmontar">(null);
   const [editingConfig, setEditingConfig] = useState<{ config: TecConfig; duplicar: boolean } | null>(null);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const d = await api.get<TecnicosData>("/api/tecnicos/data");
       setData(d);
     } catch {
-      setError("Não foi possível carregar os dados. Tente novamente.");
+      if (!silent) setError("Não foi possível carregar os dados. Tente novamente.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
+  useRealtime("tecnicos", () => load(true));
   useEffect(() => {
     load();
   }, []);
@@ -118,7 +120,7 @@ export default function TecnicosApp({ user, onLogout, onHome }: { user: User; on
             <h1>{title}</h1>
           </div>
           <div className="header-actions">
-            <button className="secondary" onClick={load}>
+            <button className="secondary" onClick={() => load()}>
               <RefreshCw size={16} /> Atualizar
             </button>
             {tab === "estoque" && (

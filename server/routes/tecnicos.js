@@ -2,6 +2,7 @@ const express = require("express");
 const { db, transaction } = require("../db");
 const { requireAuth } = require("../auth");
 const { nowStamp } = require("../util");
+const { broadcast } = require("../realtime");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -60,6 +61,7 @@ router.post("/movimentacao", (req, res) => {
 
   try {
     run();
+    broadcast("tecnicos");
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível registrar." });
@@ -90,6 +92,7 @@ router.post("/configuracoes", (req, res) => {
 
   try {
     const id = run();
+    broadcast("tecnicos");
     res.json({ ok: true, id });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Já existe uma configuração com esse nome." });
@@ -120,6 +123,7 @@ router.post("/configuracoes/:id/duplicar", (req, res) => {
 
   try {
     const newId = run();
+    broadcast("tecnicos");
     res.json({ ok: true, id: newId });
   } catch (error) {
     res.status(400).json({ error: "Já existe uma configuração com esse nome." });
@@ -163,6 +167,7 @@ router.patch("/configuracoes/:id", (req, res) => {
 
   try {
     run();
+    broadcast("tecnicos");
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Já existe uma configuração com esse nome." });
@@ -208,6 +213,7 @@ router.post("/montar", (req, res) => {
 
   try {
     run();
+    broadcast("tecnicos");
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível montar." });
@@ -252,6 +258,7 @@ router.post("/maquina-operacao", (req, res) => {
 
   try {
     run();
+    broadcast("tecnicos");
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível concluir a operação." });

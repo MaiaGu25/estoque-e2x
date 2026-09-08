@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import type { RmaCaso, RmaEvento, RmaStats, RmaStatus, User } from "./types";
+import { useRealtime } from "./useRealtime";
 
 const fmt = (n: number) => new Intl.NumberFormat("pt-BR").format(n);
 const fmtR$ = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
@@ -40,6 +41,7 @@ export default function RmaApp({ user, onLogout, onHome }: { user: User; onLogou
   const title = tabs.find((t) => t[0] === tab)?.[1];
 
   const recarregar = () => setRefreshKey((k) => k + 1);
+  useRealtime("rma", recarregar);
 
   return (
     <div className="app-shell">

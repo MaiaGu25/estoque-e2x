@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import type { Teste, TestesStats, User } from "./types";
+import { useRealtime } from "./useRealtime";
 
 const dt = (s: string) => new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
@@ -435,6 +436,7 @@ function PainelTab({ onAbrirConsulta }: { onAbrirConsulta: (codigo: string) => v
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useRealtime("testes", carregar);
 
   return (
     <section>

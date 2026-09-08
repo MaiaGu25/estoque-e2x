@@ -7,6 +7,7 @@ import {
 import { api } from "./api";
 import type { Data, Member, Movement, Order, Part, User } from "./types";
 import UsersPanel from "./UsersPanel";
+import { useRealtime } from "./useRealtime";
 
 const empty: Data = { parts: [], movements: [], orders: [], members: [], reasons: [] };
 
@@ -37,22 +38,23 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const q = from && to ? `?from=${from}&to=${to}` : "";
       const d = await api.get<Data>("/api/data" + q);
       setData(d);
     } catch {
-      setError("Não foi possível carregar os dados. Tente novamente.");
+      if (!silent) setError("Não foi possível carregar os dados. Tente novamente.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
   useEffect(() => {
     load();
   }, []);
+  useRealtime("estoque", () => load(true));
 
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase("pt-BR");
@@ -127,7 +129,7 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
             <h1>{title}</h1>
           </div>
           <div className="header-actions">
-            <button className="secondary" onClick={load}>
+            <button className="secondary" onClick={() => load()}>
               <RefreshCw size={16} /> Atualizar
             </button>
             {tab !== "usuarios" && (
@@ -315,7 +317,7 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
                     <label>Data final</label>
                     <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
                   </div>
-                  <button className="primary" onClick={load}>
+                  <button className="primary" onClick={() => load()}>
                     Aplicar período
                   </button>
                   <button

@@ -2,6 +2,7 @@ const express = require("express");
 const { db, transaction } = require("../db");
 const { requireAuth } = require("../auth");
 const { nowStamp } = require("../util");
+const { broadcast } = require("../realtime");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -34,6 +35,7 @@ router.post("/fornecedores", (req, res) => {
     const result = db
       .prepare("INSERT INTO fornecedores (nome,identificacao,contato) VALUES (?,?,?)")
       .run(nome, String(b.identificacao || "").trim(), String(b.contato || "").trim());
+    broadcast("pecasFornecedor");
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (error) {
     res.status(400).json({ error: "Já existe um fornecedor com esse nome." });
@@ -63,6 +65,7 @@ router.patch("/fornecedores/:id", (req, res) => {
   values.push(id);
   try {
     db.prepare(`UPDATE fornecedores SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    broadcast("pecasFornecedor");
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: "Já existe um fornecedor com esse nome." });
@@ -146,6 +149,7 @@ router.post("/pecas", (req, res) => {
 
   try {
     const id = run();
+    broadcast("pecasFornecedor");
     res.json({ ok: true, id });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar a peça." });
@@ -209,6 +213,7 @@ router.patch("/pecas/:id", (req, res) => {
 
   try {
     run();
+    broadcast("pecasFornecedor");
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível atualizar a peça." });
@@ -225,6 +230,7 @@ router.post("/pecas/:id/eventos", (req, res) => {
 
   registrarEvento(id, texto, req.user);
   db.prepare("UPDATE pecas_fornecedor SET updated_at = ? WHERE id = ?").run(nowStamp(), id);
+  broadcast("pecasFornecedor");
   res.json({ ok: true });
 });
 

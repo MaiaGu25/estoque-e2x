@@ -2,6 +2,7 @@ const express = require("express");
 const { db, transaction } = require("../db");
 const { requireAuth } = require("../auth");
 const { nowStamp } = require("../util");
+const { broadcast } = require("../realtime");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -57,6 +58,7 @@ router.post("/", (req, res) => {
 
   try {
     const number = createOrderTx({ type, reason, notes, items }, req.user);
+    broadcast("estoque");
     res.json({ ok: true, number });
   } catch (error) {
     // A transação já desfez qualquer alteração parcial no banco.
