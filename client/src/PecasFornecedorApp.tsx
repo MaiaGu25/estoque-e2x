@@ -9,6 +9,7 @@ import type {
   Fornecedor, PecaFornecedor, PecaFornecedorEvento, PecaFornecedorStatus,
   PecasFornecedorStats, User,
 } from "./types";
+import { useRealtime } from "./useRealtime";
 
 const fmt = (n: number) => new Intl.NumberFormat("pt-BR").format(n);
 const dt = (s: string) => new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
@@ -42,6 +43,7 @@ export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: U
   const title = tabs.find((t) => t[0] === tab)?.[1];
 
   const recarregar = () => setRefreshKey((k) => k + 1);
+  useRealtime("pecasFornecedor", recarregar);
 
   const carregarFornecedores = async () => {
     const r = await api.get<{ fornecedores: Fornecedor[] }>("/api/pecas-fornecedor/fornecedores");

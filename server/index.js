@@ -1,7 +1,9 @@
 const path = require("path");
 const fs = require("fs");
+const http = require("http");
 const express = require("express");
 const cookieParser = require("cookie-parser");
+const realtime = require("./realtime");
 
 // node:sqlite ainda é experimental no Node.js e imprime um aviso ao ser
 // carregado; suprime só esse aviso para não confundir quem só quer ver
@@ -60,7 +62,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Erro interno do servidor." });
 });
 
+const server = http.createServer(app);
+realtime.init(server);
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`Estoque E2X rodando em http://localhost:${PORT}`);
 });

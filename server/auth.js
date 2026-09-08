@@ -47,14 +47,37 @@ const publicUserFields = (u) => ({
   mustChangePassword: !!u.must_change_password,
 });
 
-function requireAuth(req, res, next) {
-  const token = req.cookies?.[COOKIE_NAME];
+function userFromToken(token) {
   const session = verify(token);
-  if (!session) return res.status(401).json({ error: "Faça login para continuar." });
+  if (!session) return null;
   const user = db.prepare("SELECT * FROM users WHERE id = ?").get(session.uid);
-  if (!user || !user.active || user.session_version !== session.v) {
+  if (!user || !user.active || user.session_version !== session.v) return null;
+  return user;
+}
+
+// Extrai um cookie de um cabeçalho "Cookie" bruto - usado no handshake do
+// WebSocket, que não passa pelo cookie-parser do Express.
+function parseCookieHeader(header, name) {
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(eq + 1).trim());
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+function requireAuth(req, res, next) {
+  const user = userFromToken(req.cookies?.[COOKIE_NAME]);
+  if (!user) {
     clearSession(res);
-    return res.status(401).json({ error: "Sessão inválida. Faça login novamente." });
+    return res.status(401).json({ error: "Faça login para continuar." });
   }
   req.user = user;
   next();
@@ -74,4 +97,6 @@ module.exports = {
   requireAuth,
   requireAdmin,
   publicUserFields,
+  userFromToken,
+  parseCookieHeader,
 };

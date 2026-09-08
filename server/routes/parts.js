@@ -2,6 +2,7 @@ const express = require("express");
 const { db } = require("../db");
 const { requireAuth, requireAdmin } = require("../auth");
 const { nowStamp } = require("../util");
+const { broadcast } = require("../realtime");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -35,6 +36,7 @@ router.post("/", (req, res) => {
         "INSERT INTO movements (part_id,order_id,type,quantity,previous_balance,new_balance,reason,responsible,notes,created_by,created_at) VALUES (?,NULL,'ENTRADA',?,0,?,'Estoque inicial',?,'Cadastro da peça',?,?)"
       ).run(result.lastInsertRowid, initialQty, initialQty, req.user.name, req.user.id, now);
     }
+    broadcast("estoque");
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (error) {
     res.status(400).json({ error: "Código já existe ou os dados são inválidos." });
@@ -76,6 +78,7 @@ router.patch("/:id", requireAdmin, (req, res) => {
   values.push(nowStamp());
   values.push(id);
   db.prepare(`UPDATE parts SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  broadcast("estoque");
   res.json({ ok: true });
 });
 

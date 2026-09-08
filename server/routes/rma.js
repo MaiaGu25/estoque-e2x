@@ -4,6 +4,7 @@ const path = require("path");
 const { db, transaction } = require("../db");
 const { requireAuth } = require("../auth");
 const { nowStamp, saveBase64Image } = require("../util");
+const { broadcast } = require("../realtime");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -96,6 +97,7 @@ router.post("/", (req, res) => {
 
   try {
     const { id, numero } = run();
+    broadcast("rma");
     res.json({ ok: true, id, numero });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível criar o caso." });
@@ -194,6 +196,7 @@ router.patch("/:id", (req, res) => {
 
   try {
     run();
+    broadcast("rma");
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível atualizar o caso." });
@@ -222,6 +225,7 @@ router.post("/:id/eventos", (req, res) => {
 
   registrarEvento({ casoId: id, tipo: "comentario", texto, foto: fotoRelativa, user: req.user });
   db.prepare("UPDATE rma_casos SET updated_at = ? WHERE id = ?").run(nowStamp(), id);
+  broadcast("rma");
   res.json({ ok: true });
 });
 

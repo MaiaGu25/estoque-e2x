@@ -4,6 +4,7 @@ const path = require("path");
 const { db, transaction } = require("../db");
 const { requireAuth } = require("../auth");
 const { nowStamp } = require("../util");
+const { broadcast } = require("../realtime");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -63,6 +64,7 @@ router.post("/", (req, res) => {
 
   try {
     const numero = run();
+    broadcast("testes");
     res.json({ ok: true, numero });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível registrar o teste." });
