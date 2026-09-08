@@ -106,7 +106,15 @@ router.get("/stats", (req, res) => {
        GROUP BY f.nome ORDER BY n DESC LIMIT 10`
     )
     .all();
-  res.json({ porStatus, registradasHoje, porFornecedor });
+  const porPeca = db
+    .prepare(
+      `SELECT COALESCE(NULLIF(codigo,''), descricao) AS chave, MAX(codigo) AS codigo, MAX(descricao) AS descricao, COUNT(*) AS n
+       FROM pecas_fornecedor
+       GROUP BY chave ORDER BY n DESC LIMIT 10`
+    )
+    .all()
+    .map(({ codigo, descricao, n }) => ({ codigo, descricao, n }));
+  res.json({ porStatus, registradasHoje, porFornecedor, porPeca });
 });
 
 router.post("/pecas", (req, res) => {
@@ -153,6 +161,55 @@ router.post("/pecas", (req, res) => {
     res.json({ ok: true, id });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar a peça." });
+  }
+});
+
+router.post("/pecas/lote", (req, res) => {
+  const b = req.body || {};
+  const fornecedorId = Number(b.fornecedorId);
+  const itens = Array.isArray(b.itens) ? b.itens : [];
+  if (!fornecedorId) return res.status(400).json({ error: "Selecione o fornecedor." });
+  if (!itens.length) return res.status(400).json({ error: "Adicione ao menos uma peça na lista." });
+
+  const fornecedor = db.prepare("SELECT id FROM fornecedores WHERE id = ? AND ativo = 1").get(fornecedorId);
+  if (!fornecedor) return res.status(400).json({ error: "Fornecedor inválido." });
+
+  const rmaRelacionado = String(b.rmaRelacionado || "").trim();
+  const limpos = itens.map((item) => ({
+    codigo: String(item?.codigo || "").trim(),
+    serial: String(item?.serial || "").trim(),
+    descricao: String(item?.descricao || "").trim(),
+    defeito: String(item?.defeito || "").trim(),
+  }));
+  const semDescricao = limpos.findIndex((item) => !item.descricao);
+  if (semDescricao !== -1) {
+    return res.status(400).json({ error: `Peça ${semDescricao + 1} da lista está sem descrição.` });
+  }
+
+  const run = transaction(() => {
+    const now = nowStamp();
+    const ids = [];
+    for (const item of limpos) {
+      const result = db
+        .prepare(
+          `INSERT INTO pecas_fornecedor
+           (codigo,serial,descricao,ean,marca,defeito,fornecedor_id,status,rma_relacionado,observacoes,created_by,created_at,updated_by,updated_at)
+           VALUES (?,?,?,'','',?,?,'aguardando_envio',?,'',?,?,?,?)`
+        )
+        .run(item.codigo, item.serial, item.descricao, item.defeito, fornecedorId, rmaRelacionado, req.user.id, now, req.user.id, now);
+      const id = result.lastInsertRowid;
+      registrarEvento(id, "Peça cadastrada, aguardando envio ao fornecedor.", req.user);
+      ids.push(id);
+    }
+    return ids;
+  });
+
+  try {
+    const ids = run();
+    broadcast("pecasFornecedor");
+    res.json({ ok: true, ids });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar as peças." });
   }
 });
 
