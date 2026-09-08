@@ -189,6 +189,47 @@ CREATE TABLE IF NOT EXISTS rma_eventos (
 CREATE INDEX IF NOT EXISTS idx_rma_casos_status ON rma_casos(status);
 CREATE INDEX IF NOT EXISTS idx_rma_casos_created_at ON rma_casos(created_at);
 CREATE INDEX IF NOT EXISTS idx_rma_eventos_caso ON rma_eventos(caso_id);
+
+-- Módulo "Peças / Fornecedores" (peças com defeito enviadas para troca)
+CREATE TABLE IF NOT EXISTS fornecedores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL UNIQUE,
+  identificacao TEXT NOT NULL DEFAULT '',
+  contato TEXT NOT NULL DEFAULT '',
+  ativo INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS pecas_fornecedor (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  codigo TEXT NOT NULL DEFAULT '',
+  serial TEXT NOT NULL DEFAULT '',
+  descricao TEXT NOT NULL DEFAULT '',
+  ean TEXT NOT NULL DEFAULT '',
+  marca TEXT NOT NULL DEFAULT '',
+  defeito TEXT NOT NULL DEFAULT '',
+  fornecedor_id INTEGER NOT NULL REFERENCES fornecedores(id),
+  status TEXT NOT NULL DEFAULT 'aguardando_envio'
+    CHECK(status IN ('aguardando_envio','aguardando_fornecedor','trocada','recusada')),
+  rma_relacionado TEXT NOT NULL DEFAULT '',
+  observacoes TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pecas_fornecedor_eventos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  peca_id INTEGER NOT NULL REFERENCES pecas_fornecedor(id),
+  texto TEXT NOT NULL DEFAULT '',
+  responsible TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_status ON pecas_fornecedor(status);
+CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_created_at ON pecas_fornecedor(created_at);
+CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_eventos_peca ON pecas_fornecedor_eventos(peca_id);
 `);
 
 function getMeta(key) {

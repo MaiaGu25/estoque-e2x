@@ -174,3 +174,46 @@ export type RmaStats = {
   cobradoMes: number;
   porPlataforma: { plataforma: string; n: number }[];
 };
+
+// ---- Peças / Fornecedores ----
+
+export type Fornecedor = {
+  id: number;
+  nome: string;
+  identificacao: string;
+  contato: string;
+  ativo: number;
+};
+
+export type PecaFornecedorStatus = "aguardando_envio" | "aguardando_fornecedor" | "trocada" | "recusada";
+
+export type PecaFornecedor = {
+  id: number;
+  codigo: string;
+  serial: string;
+  descricao: string;
+  ean: string;
+  marca: string;
+  defeito: string;
+  fornecedor_id: number;
+  fornecedor_nome: string;
+  status: PecaFornecedorStatus;
+  rma_relacionado: string;
+  observacoes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PecaFornecedorEvento = {
+  id: number;
+  peca_id: number;
+  texto: string;
+  responsible: string;
+  created_at: string;
+};
+
+export type PecasFornecedorStats = {
+  porStatus: { status: PecaFornecedorStatus; n: number }[];
+  registradasHoje: number;
+  porFornecedor: { fornecedor: string; n: number }[];
+};

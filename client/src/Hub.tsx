@@ -1,13 +1,14 @@
-import { Archive, Boxes, Camera, LogOut, RotateCcw, ShieldCheck } from "lucide-react";
+import { Archive, Boxes, Camera, LogOut, RotateCcw, ShieldCheck, Truck } from "lucide-react";
 import type { User } from "./types";
 
-type AppId = "estoque" | "tecnicos" | "testes" | "rma";
+type AppId = "estoque" | "tecnicos" | "testes" | "rma" | "pecasFornecedor";
 
 const APPS: { id: AppId; nome: string; descricao: string; icon: any }[] = [
   { id: "estoque", nome: "Estoque", descricao: "Peças, ordens, movimentações e relatórios do estoque geral.", icon: Boxes },
   { id: "testes", nome: "Central de Testes", descricao: "Registro de testes de máquinas com fotos e consulta de evidências.", icon: Camera },
   { id: "tecnicos", nome: "Estoque dos Técnicos", descricao: "Peças de bancada, configurações e montagem de máquinas.", icon: Archive },
   { id: "rma", nome: "RMA / SAC", descricao: "Devoluções de clientes, inspeção técnica e disputas com as plataformas.", icon: RotateCcw },
+  { id: "pecasFornecedor", nome: "Peças / Fornecedores", descricao: "Peças com defeito enviadas para troca com o fornecedor.", icon: Truck },
 ];
 
 export default function Hub({ user, onOpen, onLogout }: { user: User; onOpen: (id: AppId) => void; onLogout: () => void }) {
