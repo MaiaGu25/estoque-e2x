@@ -114,7 +114,12 @@ export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: U
               <RefreshCw size={16} /> Atualizar
             </button>
             {tab === "pecas" && (
-              <button className="primary" onClick={() => setModalNova(true)} disabled={!fornecedores.length}>
+              <button
+                className="primary"
+                onClick={() => setModalNova(true)}
+                disabled={!fornecedores.length}
+                title={fornecedores.length ? undefined : "Cadastre um fornecedor primeiro, na aba Fornecedores"}
+              >
                 <Plus size={17} /> Nova peça
               </button>
             )}
