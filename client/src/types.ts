@@ -216,4 +216,5 @@ export type PecasFornecedorStats = {
   porStatus: { status: PecaFornecedorStatus; n: number }[];
   registradasHoje: number;
   porFornecedor: { fornecedor: string; n: number }[];
+  porPeca: { codigo: string; descricao: string; n: number }[];
 };

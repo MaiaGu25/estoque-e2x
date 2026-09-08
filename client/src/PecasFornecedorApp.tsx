@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { api } from "./api";
 import type {
-  Fornecedor, PecaFornecedor, PecaFornecedorEvento, PecaFornecedorStatus,
+  Fornecedor, Part, PecaFornecedor, PecaFornecedorEvento, PecaFornecedorStatus,
   PecasFornecedorStats, User,
 } from "./types";
 import { useRealtime } from "./useRealtime";
@@ -40,6 +40,7 @@ export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: U
   const [pecaAberta, setPecaAberta] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [estoquePecas, setEstoquePecas] = useState<Part[]>([]);
   const title = tabs.find((t) => t[0] === tab)?.[1];
 
   const recarregar = () => setRefreshKey((k) => k + 1);
@@ -52,6 +53,10 @@ export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: U
   useEffect(() => {
     carregarFornecedores();
   }, [refreshKey]);
+
+  useEffect(() => {
+    api.get<{ parts: Part[] }>("/api/data").then((r) => setEstoquePecas(r.parts)).catch(() => {});
+  }, []);
 
   return (
     <div className="app-shell">
@@ -135,11 +140,12 @@ export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: U
       {modalNova && (
         <NovaPecaModal
           fornecedores={fornecedores}
+          estoquePecas={estoquePecas}
           onClose={() => setModalNova(false)}
-          onCriada={(id) => {
+          onCriada={(ids) => {
             setModalNova(false);
             recarregar();
-            setPecaAberta(id);
+            if (ids.length === 1) setPecaAberta(ids[0]);
           }}
         />
       )}
@@ -238,7 +244,7 @@ function PainelTab({ refreshKey, onAbrirPeca }: { refreshKey: number; onAbrirPec
             {!recentes.length && <Empty text="Nenhuma peça registrada ainda." />}
           </div>
         </Panel>
-        <Panel title="Por fornecedor">
+        <Panel title="Fornecedores que mais dão RMA">
           <div className="reason-list">
             {(stats?.porFornecedor || []).map((f) => {
               const max = Math.max(1, ...(stats?.porFornecedor.map((x) => x.n) || [1]));
@@ -255,6 +261,30 @@ function PainelTab({ refreshKey, onAbrirPeca }: { refreshKey: number; onAbrirPec
               );
             })}
             {!stats?.porFornecedor.length && <p className="cart-empty">Sem dados ainda.</p>}
+          </div>
+        </Panel>
+      </div>
+
+      <div className="grid-two">
+        <Panel title="Peças que mais dão RMA">
+          <div className="reason-list">
+            {(stats?.porPeca || []).map((p) => {
+              const max = Math.max(1, ...(stats?.porPeca.map((x) => x.n) || [1]));
+              return (
+                <div className="reason" key={p.codigo + p.descricao}>
+                  <div>
+                    <span>
+                      {p.codigo ? <b className="code">{p.codigo}</b> : null} {p.descricao}
+                    </span>
+                    <b>{p.n}</b>
+                  </div>
+                  <div className="bar">
+                    <i style={{ width: `${Math.max(4, (p.n / max) * 100)}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            {!stats?.porPeca.length && <p className="cart-empty">Sem dados ainda.</p>}
           </div>
         </Panel>
       </div>
@@ -504,52 +534,78 @@ function Modal({ title, subtitle, onClose, children }: { title: string; subtitle
   );
 }
 
+type ItemLote = {
+  key: number;
+  codigo: string;
+  descricao: string;
+  serial: string;
+  defeito: string;
+};
+
+let itemLoteSeq = 0;
+
 function NovaPecaModal({
   fornecedores,
+  estoquePecas,
   onClose,
   onCriada,
 }: {
   fornecedores: Fornecedor[];
+  estoquePecas: Part[];
   onClose: () => void;
-  onCriada: (id: number) => void;
+  onCriada: (ids: number[]) => void;
 }) {
   const [fornecedorId, setFornecedorId] = useState(fornecedores[0]?.id || 0);
-  const [codigo, setCodigo] = useState("");
-  const [serial, setSerial] = useState("");
-  const [descricao, setDescricao] = useState("");
-  const [ean, setEan] = useState("");
-  const [marca, setMarca] = useState("");
-  const [defeito, setDefeito] = useState("");
   const [rmaRelacionado, setRmaRelacionado] = useState("");
+  const [busca, setBusca] = useState("");
+  const [itens, setItens] = useState<ItemLote[]>([]);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const encontradas = busca
+    ? estoquePecas.filter((p) => (p.code + " " + p.name).toLowerCase().includes(busca.toLowerCase())).slice(0, 8)
+    : [];
+
+  const adicionarDoEstoque = (p: Part) => {
+    setItens((x) => [...x, { key: ++itemLoteSeq, codigo: p.code, descricao: p.name, serial: "", defeito: "" }]);
+    setBusca("");
+  };
+
+  const adicionarAvulsa = () => {
+    setItens((x) => [...x, { key: ++itemLoteSeq, codigo: "", descricao: "", serial: "", defeito: "" }]);
+  };
+
+  const atualizarItem = (key: number, patch: Partial<ItemLote>) => {
+    setItens((x) => x.map((i) => (i.key === key ? { ...i, ...patch } : i)));
+  };
+
+  const removerItem = (key: number) => {
+    setItens((x) => x.filter((i) => i.key !== key));
+  };
 
   const salvar = async () => {
     setErr("");
     if (!fornecedorId) return setErr("Selecione o fornecedor.");
-    if (!descricao.trim()) return setErr("Descreva a peça.");
+    if (!itens.length) return setErr("Adicione ao menos uma peça na lista.");
+    const semDescricao = itens.findIndex((i) => !i.descricao.trim());
+    if (semDescricao !== -1) return setErr(`Peça ${semDescricao + 1} da lista está sem descrição.`);
     setSaving(true);
     try {
-      const res = await api.post<{ ok: boolean; id: number }>("/api/pecas-fornecedor/pecas", {
+      const res = await api.post<{ ok: boolean; ids: number[] }>("/api/pecas-fornecedor/pecas/lote", {
         fornecedorId,
-        codigo,
-        serial,
-        descricao,
-        ean,
-        marca,
-        defeito,
         rmaRelacionado,
+        itens: itens.map(({ codigo, descricao, serial, defeito }) => ({ codigo, descricao, serial, defeito })),
       });
-      onCriada(res.id);
+      onCriada(res.ids);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Não foi possível cadastrar a peça.");
+      setErr(e instanceof Error ? e.message : "Não foi possível cadastrar as peças.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal title="Nova peça para o fornecedor" subtitle="Cadastre a peça defeituosa antes de enviar." onClose={onClose}>
+    <Modal title="Novas peças para o fornecedor" subtitle="Monte a lista de peças defeituosas antes de enviar ao fornecedor." onClose={onClose}>
       <div className="form-grid">
         <Field label="Fornecedor *">
           <select value={fornecedorId} onChange={(e) => setFornecedorId(Number(e.target.value))}>
@@ -560,37 +616,75 @@ function NovaPecaModal({
             ))}
           </select>
         </Field>
-        <Field label="Código interno">
-          <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Ex.: 4129" />
-        </Field>
-      </div>
-      <Field label="Descrição *">
-        <input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: CORE i5 2TH" />
-      </Field>
-      <div className="form-grid">
-        <Field label="Serial">
-          <input value={serial} onChange={(e) => setSerial(e.target.value)} />
-        </Field>
-        <Field label="EAN">
-          <input value={ean} onChange={(e) => setEan(e.target.value)} />
-        </Field>
-        <Field label="Marca">
-          <input value={marca} onChange={(e) => setMarca(e.target.value)} />
-        </Field>
         <Field label="Nº do caso RMA relacionado (opcional)">
           <input value={rmaRelacionado} onChange={(e) => setRmaRelacionado(e.target.value)} placeholder="Ex.: RMA-20260904-95889" />
         </Field>
       </div>
-      <Field label="Defeito identificado">
-        <textarea value={defeito} onChange={(e) => setDefeito(e.target.value)} />
+
+      <Field label="Adicionar peça (digite o código ou nome)">
+        <div className="part-search">
+          <Search />
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Ex.: 4129 ou CORE i5" />
+          {busca && (
+            <div className="results">
+              {encontradas.map((p) => (
+                <button key={p.id} onClick={() => adicionarDoEstoque(p)}>
+                  <span>
+                    <b>{p.code}</b> · {p.name}
+                  </span>
+                  <small>Saldo: {fmt(p.quantity)}</small>
+                </button>
+              ))}
+              {!encontradas.length && <p className="cart-empty">Nenhuma peça do estoque encontrada com esse código/nome.</p>}
+            </div>
+          )}
+        </div>
       </Field>
+      <button className="secondary" onClick={adicionarAvulsa} style={{ marginBottom: 14 }}>
+        <Plus size={15} /> Adicionar peça avulsa (fora do estoque)
+      </button>
+
+      <div className="cart" style={{ maxHeight: 320 }}>
+        <div className="cart-head">
+          <b>Peças da lista</b>
+          <span>{itens.length} selecionadas</span>
+        </div>
+        {itens.map((item, idx) => (
+          <div className="cart-row" key={item.key} style={{ gridTemplateColumns: "1fr 1fr 1fr 32px", alignItems: "start" }}>
+            <span>
+              <b>{item.codigo || `Peça ${idx + 1}`}</b>
+              <input
+                value={item.descricao}
+                onChange={(e) => atualizarItem(item.key, { descricao: e.target.value })}
+                placeholder="Descrição *"
+                style={{ marginTop: 6 }}
+              />
+            </span>
+            <input
+              value={item.serial}
+              onChange={(e) => atualizarItem(item.key, { serial: e.target.value })}
+              placeholder="Serial (opcional)"
+            />
+            <input
+              value={item.defeito}
+              onChange={(e) => atualizarItem(item.key, { defeito: e.target.value })}
+              placeholder="Defeito identificado"
+            />
+            <button onClick={() => removerItem(item.key)}>
+              <X />
+            </button>
+          </div>
+        ))}
+        {!itens.length && <p className="cart-empty">Pesquise uma peça do estoque acima, ou adicione uma peça avulsa.</p>}
+      </div>
+
       {err && <div className="error">{err}</div>}
       <div className="modal-actions">
         <button className="secondary" onClick={onClose}>
           Cancelar
         </button>
-        <button className="primary" disabled={saving} onClick={salvar}>
-          {saving ? "Cadastrando…" : "Cadastrar peça"}
+        <button className="primary" disabled={saving || !itens.length} onClick={salvar}>
+          {saving ? "Cadastrando…" : `Cadastrar ${itens.length || ""} peça${itens.length === 1 ? "" : "s"}`}
         </button>
       </div>
     </Modal>
