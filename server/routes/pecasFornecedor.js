@@ -117,52 +117,10 @@ router.get("/stats", (req, res) => {
   res.json({ porStatus, registradasHoje, porFornecedor, porPeca });
 });
 
-router.post("/pecas", (req, res) => {
-  const b = req.body || {};
-  const fornecedorId = Number(b.fornecedorId);
-  const descricao = String(b.descricao || "").trim();
-  if (!fornecedorId) return res.status(400).json({ error: "Selecione o fornecedor." });
-  if (!descricao) return res.status(400).json({ error: "Descreva a peça." });
-
-  const fornecedor = db.prepare("SELECT id FROM fornecedores WHERE id = ? AND ativo = 1").get(fornecedorId);
-  if (!fornecedor) return res.status(400).json({ error: "Fornecedor inválido." });
-
-  const run = transaction(() => {
-    const now = nowStamp();
-    const result = db
-      .prepare(
-        `INSERT INTO pecas_fornecedor
-         (codigo,serial,descricao,ean,marca,defeito,fornecedor_id,status,rma_relacionado,observacoes,created_by,created_at,updated_by,updated_at)
-         VALUES (?,?,?,?,?,?,?,'aguardando_envio',?,?,?,?,?,?)`
-      )
-      .run(
-        String(b.codigo || "").trim(),
-        String(b.serial || "").trim(),
-        descricao,
-        String(b.ean || "").trim(),
-        String(b.marca || "").trim(),
-        String(b.defeito || "").trim(),
-        fornecedorId,
-        String(b.rmaRelacionado || "").trim(),
-        String(b.observacoes || "").trim(),
-        req.user.id,
-        now,
-        req.user.id,
-        now
-      );
-    const id = result.lastInsertRowid;
-    registrarEvento(id, "Peça cadastrada, aguardando envio ao fornecedor.", req.user);
-    return id;
-  });
-
-  try {
-    const id = run();
-    broadcast("pecasFornecedor");
-    res.json({ ok: true, id });
-  } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar a peça." });
-  }
-});
+function gerarNumeroPedido() {
+  const now = nowStamp();
+  return `ORD-${now.slice(0, 10).replaceAll("-", "")}-${String(Date.now()).slice(-5)}`;
+}
 
 router.post("/pecas/lote", (req, res) => {
   const b = req.body || {};
@@ -171,7 +129,7 @@ router.post("/pecas/lote", (req, res) => {
   if (!fornecedorId) return res.status(400).json({ error: "Selecione o fornecedor." });
   if (!itens.length) return res.status(400).json({ error: "Adicione ao menos uma peça na lista." });
 
-  const fornecedor = db.prepare("SELECT id FROM fornecedores WHERE id = ? AND ativo = 1").get(fornecedorId);
+  const fornecedor = db.prepare("SELECT id, nome FROM fornecedores WHERE id = ? AND ativo = 1").get(fornecedorId);
   if (!fornecedor) return res.status(400).json({ error: "Fornecedor inválido." });
 
   const rmaRelacionado = String(b.rmaRelacionado || "").trim();
@@ -186,31 +144,154 @@ router.post("/pecas/lote", (req, res) => {
     return res.status(400).json({ error: `Peça ${semDescricao + 1} da lista está sem descrição.` });
   }
 
+  const pedidoNumero = gerarNumeroPedido();
+
   const run = transaction(() => {
     const now = nowStamp();
     const ids = [];
+    let baixasAutomaticas = 0;
     for (const item of limpos) {
       const result = db
         .prepare(
           `INSERT INTO pecas_fornecedor
-           (codigo,serial,descricao,ean,marca,defeito,fornecedor_id,status,rma_relacionado,observacoes,created_by,created_at,updated_by,updated_at)
-           VALUES (?,?,?,'','',?,?,'aguardando_envio',?,'',?,?,?,?)`
+           (codigo,serial,descricao,ean,marca,defeito,fornecedor_id,status,rma_relacionado,observacoes,pedido_numero,created_by,created_at,updated_by,updated_at)
+           VALUES (?,?,?,'','',?,?,'aguardando_envio',?,'',?,?,?,?,?)`
         )
-        .run(item.codigo, item.serial, item.descricao, item.defeito, fornecedorId, rmaRelacionado, req.user.id, now, req.user.id, now);
+        .run(item.codigo, item.serial, item.descricao, item.defeito, fornecedorId, rmaRelacionado, pedidoNumero, req.user.id, now, req.user.id, now);
       const id = result.lastInsertRowid;
-      registrarEvento(id, "Peça cadastrada, aguardando envio ao fornecedor.", req.user);
+
+      let textoEvento = "Peça cadastrada, aguardando envio ao fornecedor.";
+      if (item.codigo) {
+        const part = db.prepare("SELECT id, quantity FROM parts WHERE code = ? AND active = 1").get(item.codigo);
+        if (part) {
+          const next = part.quantity - 1;
+          db.prepare("UPDATE parts SET quantity = ?, updated_at = ? WHERE id = ?").run(next, now, part.id);
+          db.prepare(
+            `INSERT INTO movements (part_id,order_id,type,quantity,previous_balance,new_balance,reason,responsible,notes,created_by,created_at)
+             VALUES (?,NULL,'SAIDA',1,?,?,'RMA',?,?,?,?)`
+          ).run(part.id, part.quantity, next, req.user.name, `Pedido ${pedidoNumero} · ${item.descricao} · Fornecedor: ${fornecedor.nome}`, req.user.id, now);
+          baixasAutomaticas++;
+          textoEvento += ` Saída automática registrada no estoque (${item.codigo}).`;
+        }
+      }
+      registrarEvento(id, textoEvento, req.user);
       ids.push(id);
     }
-    return ids;
+    return { ids, baixasAutomaticas };
   });
 
   try {
-    const ids = run();
+    const { ids, baixasAutomaticas } = run();
     broadcast("pecasFornecedor");
-    res.json({ ok: true, ids });
+    if (baixasAutomaticas) broadcast("estoque");
+    res.json({ ok: true, pedidoNumero, ids, baixasAutomaticas, semCorrespondencia: ids.length - baixasAutomaticas });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar as peças." });
   }
+});
+
+// ---- Pedidos (agrupamento de peças cadastradas juntas) ----
+
+router.get("/pedidos", (req, res) => {
+  const { status, fornecedorId, busca } = req.query;
+  const where = [];
+  const params = [];
+  if (fornecedorId) { where.push("p.fornecedor_id = ?"); params.push(Number(fornecedorId)); }
+  if (status) { where.push("p.status = ?"); params.push(String(status)); }
+  if (busca) {
+    where.push("(p.pedido_numero LIKE ? OR p.codigo LIKE ? OR p.serial LIKE ? OR p.descricao LIKE ? OR p.ean LIKE ?)");
+    const like = `%${busca}%`;
+    params.push(like, like, like, like, like);
+  }
+  const sql = `
+    SELECT
+      p.pedido_numero,
+      p.fornecedor_id,
+      f.nome AS fornecedor_nome,
+      COUNT(*) AS total_pecas,
+      MIN(p.created_at) AS created_at,
+      MAX(p.updated_at) AS updated_at,
+      SUM(CASE WHEN p.status = 'aguardando_envio' THEN 1 ELSE 0 END) AS aguardando_envio,
+      SUM(CASE WHEN p.status = 'aguardando_fornecedor' THEN 1 ELSE 0 END) AS aguardando_fornecedor,
+      SUM(CASE WHEN p.status = 'trocada' THEN 1 ELSE 0 END) AS trocada,
+      SUM(CASE WHEN p.status = 'recusada' THEN 1 ELSE 0 END) AS recusada
+    FROM pecas_fornecedor p
+    JOIN fornecedores f ON f.id = p.fornecedor_id
+    ${where.length ? "WHERE " + where.join(" AND ") : ""}
+    GROUP BY p.pedido_numero
+    ORDER BY created_at DESC LIMIT 300`;
+  const pedidos = db.prepare(sql).all(...params);
+  res.json({ pedidos });
+});
+
+router.get("/pedidos/:numero", (req, res) => {
+  const numero = req.params.numero;
+  const pecas = db
+    .prepare(
+      `SELECT p.*, f.nome AS fornecedor_nome FROM pecas_fornecedor p
+       JOIN fornecedores f ON f.id = p.fornecedor_id
+       WHERE p.pedido_numero = ? ORDER BY p.id ASC`
+    )
+    .all(numero);
+  if (!pecas.length) return res.status(404).json({ error: "Pedido não encontrado." });
+  res.json({
+    pedidoNumero: numero,
+    fornecedorId: pecas[0].fornecedor_id,
+    fornecedorNome: pecas[0].fornecedor_nome,
+    createdAt: pecas[0].created_at,
+    pecas,
+  });
+});
+
+function csvField(v) {
+  const s = String(v ?? "");
+  return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+router.get("/planilha", (req, res) => {
+  const { pedidoNumero, status, fornecedorId, busca } = req.query;
+  const where = [];
+  const params = [];
+  if (pedidoNumero) { where.push("p.pedido_numero = ?"); params.push(String(pedidoNumero)); }
+  if (fornecedorId) { where.push("p.fornecedor_id = ?"); params.push(Number(fornecedorId)); }
+  if (status) { where.push("p.status = ?"); params.push(String(status)); }
+  if (busca) {
+    where.push("(p.pedido_numero LIKE ? OR p.codigo LIKE ? OR p.serial LIKE ? OR p.descricao LIKE ? OR p.ean LIKE ?)");
+    const like = `%${busca}%`;
+    params.push(like, like, like, like, like);
+  }
+  const sql = `
+    SELECT p.*, f.nome AS fornecedor_nome
+    FROM pecas_fornecedor p
+    JOIN fornecedores f ON f.id = p.fornecedor_id
+    ${where.length ? "WHERE " + where.join(" AND ") : ""}
+    ORDER BY p.pedido_numero DESC, p.id ASC LIMIT 2000`;
+  const pecas = db.prepare(sql).all(...params);
+
+  const linhas = [
+    ["Pedido", "Codigo", "Serial", "Descricao", "EAN", "Marca", "Defeito", "Fornecedor", "Status", "RMA relacionado", "Data"].join(";"),
+    ...pecas.map((p) =>
+      [
+        p.pedido_numero,
+        p.codigo,
+        p.serial,
+        p.descricao,
+        p.ean,
+        p.marca,
+        p.defeito,
+        p.fornecedor_nome,
+        STATUS_LABEL[p.status] || p.status,
+        p.rma_relacionado,
+        p.created_at,
+      ]
+        .map(csvField)
+        .join(";")
+    ),
+  ];
+  const nomeArquivo = pedidoNumero ? `pedido_${pedidoNumero}.csv` : `pecas_fornecedor_${nowStamp().slice(0, 10)}.csv`;
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${nomeArquivo}"`);
+  res.send("﻿" + linhas.join("\r\n"));
 });
 
 router.get("/pecas/:id", (req, res) => {
