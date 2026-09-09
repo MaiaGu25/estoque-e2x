@@ -250,3 +250,112 @@ export type PecasFornecedorStats = {
   porFornecedor: { fornecedor: string; n: number }[];
   porPeca: { codigo: string; descricao: string; n: number }[];
 };
+
+// ---- Logística ----
+
+export type LogSituacao = "disponivel" | "baixo" | "sem_estoque" | "inativo";
+
+export type LogProduto = {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  category: string;
+  unit: string;
+  minimum_stock: number;
+  notes: string;
+  active: number;
+  saldo_total: number;
+  situacao: LogSituacao;
+  created_at: string;
+  updated_at: string;
+  created_by: number | null;
+  updated_by: number | null;
+};
+
+export type LogPosicao = {
+  id: number;
+  rack_id: number;
+  level_number: number;
+  code: string;
+  name: string;
+  active: number;
+  blocked: number;
+  product_count: number;
+  total_quantity: number;
+};
+
+export type LogMontante = {
+  id: number;
+  aisle_id: number;
+  code: string;
+  name: string;
+  levels_count: number;
+  color: string;
+  active: number;
+  positions: LogPosicao[];
+};
+
+export type LogCorredor = {
+  id: number;
+  row_id: number;
+  code: string;
+  name: string;
+  active: number;
+  racks: LogMontante[];
+};
+
+export type LogFileira = {
+  id: number;
+  code: string;
+  name: string;
+  color: string;
+  active: number;
+  aisles: LogCorredor[];
+};
+
+export type LogMapa = { rows: LogFileira[] };
+
+export type LogTipoOperacao = "ENTRADA" | "SAIDA" | "TRANSFERENCIA" | "AJUSTE";
+
+export type LogMovimentoResumo = {
+  id: number;
+  created_at: string;
+  quantity: number;
+  number: string;
+  type: LogTipoOperacao;
+  reason: string;
+  responsible: string;
+  product_code: string;
+  product_name: string;
+  from_position_code: string | null;
+  to_position_code: string | null;
+};
+
+export type LogHistoricoRegistro = LogMovimentoResumo & {
+  operation_id: number;
+  product_id: number;
+  unit: string;
+  notes: string;
+  from_position_id: number | null;
+  to_position_id: number | null;
+  previous_total_quantity: number;
+  new_total_quantity: number;
+  registered_by: string | null;
+};
+
+export type LogDashboard = {
+  produtosCadastrados: number;
+  unidadesTotais: number;
+  estoqueBaixo: number;
+  semEstoque: number;
+  registradasHoje: number;
+  posicoesTotais: number;
+  posicoesOcupadas: number;
+  posicoesVazias: number;
+  entradasRecentes: LogMovimentoResumo[];
+  saidasRecentes: LogMovimentoResumo[];
+  transferenciasRecentes: LogMovimentoResumo[];
+  ajustesRecentes: LogMovimentoResumo[];
+  ultimasMovimentacoes: LogMovimentoResumo[];
+};
