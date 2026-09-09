@@ -19,6 +19,14 @@ USO DIARIO
 - Para descobrir o endereço dos outros computadores, execute DESCOBRIR_IP.bat.
 - Cada pessoa faz login com seu próprio usuário e senha.
 
+ATUALIZACAO
+- Feche a janela do INICIAR_ESTOQUE.bat, se estiver aberta.
+- Execute ATUALIZAR.bat sempre que for avisado de uma atualização nova.
+- Ele baixa a versão mais recente sozinho e prepara tudo de novo.
+- Seus dados (pasta "data") nunca são apagados ou alterados por ele.
+- Na primeira vez que rodar, ele pode pedir para instalar o Git; se
+  pedir, deixe instalar e depois execute ATUALIZAR.bat de novo.
+
 BACKUP
 - Conecte o SSD como E:.
 - Feche o sistema para garantir uma cópia consistente.
