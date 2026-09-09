@@ -5,6 +5,7 @@ const { db, transaction } = require("../db");
 const { requireAuth } = require("../auth");
 const { nowStamp } = require("../util");
 const { broadcast } = require("../realtime");
+const { gerarPlanilha } = require("../xlsx");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -103,15 +104,28 @@ router.get("/stats", (req, res) => {
   res.json({ total, hoje, ultimo, porResponsavel });
 });
 
-router.get("/export.csv", (req, res) => {
+router.get("/export.xlsx", async (req, res) => {
   const testes = db.prepare("SELECT * FROM testes ORDER BY id DESC").all();
-  const linhas = [
-    "Numero do Teste;Codigo;Responsavel;Data",
-    ...testes.map((t) => `${String(t.numero_teste).padStart(6, "0")};${t.codigo};${t.responsible};${t.created_at}`),
-  ];
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="relatorio_testes_${hojeStamp()}.csv"`);
-  res.send("﻿" + linhas.join("\r\n"));
+  try {
+    const buffer = await gerarPlanilha({
+      titulo: "Relatório de Testes",
+      periodo: "Todos os registros",
+      geradoPor: req.user.name,
+      colunas: [
+        { key: "numero_teste", header: "Número do Teste", minWidth: 14, maxWidth: 18 },
+        { key: "codigo", header: "Código", minWidth: 10, maxWidth: 20 },
+        { key: "responsible", header: "Responsável", minWidth: 14, maxWidth: 24, wrap: true },
+        { key: "created_at", header: "Data", type: "date", minWidth: 14, maxWidth: 18 },
+      ],
+      linhas: testes.map((t) => ({ ...t, numero_teste: String(t.numero_teste).padStart(6, "0") })),
+    });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="relatorio_testes_${hojeStamp()}.xlsx"`);
+    res.send(buffer);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Não foi possível gerar a planilha." });
+  }
 });
 
 function hojeStamp() {

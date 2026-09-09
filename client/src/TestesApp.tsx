@@ -481,8 +481,8 @@ function PainelTab({ onAbrirConsulta }: { onAbrirConsulta: (codigo: string) => v
         <button className="primary" onClick={carregar}>
           <RefreshCw size={15} /> Pesquisar
         </button>
-        <a className="secondary" href="/api/testes/export.csv" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-          <Download size={15} /> CSV
+        <a className="secondary" href="/api/testes/export.xlsx" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
+          <Download size={15} /> Planilha
         </a>
       </div>
 

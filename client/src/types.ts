@@ -18,6 +18,7 @@ export type Part = {
   location: string;
   quantity: number;
   minimum_stock: number;
+  reserved_quantity: number;
   notes: string;
   active: number;
 };
@@ -30,6 +31,22 @@ export type Movement = {
   quantity: number;
   previous_balance: number;
   new_balance: number;
+  reason: string;
+  responsible: string;
+  notes: string;
+  created_at: string;
+  code: string;
+  part_name: string;
+  unit: string;
+};
+
+export type ReservedMovement = {
+  id: number;
+  part_id: number;
+  type: "RESERVAR" | "LIBERAR";
+  quantity: number;
+  previous_reserved: number;
+  new_reserved: number;
   reason: string;
   responsible: string;
   notes: string;
@@ -60,6 +77,7 @@ export type Data = {
   orders: Order[];
   members: Member[];
   reasons: Reason[];
+  reservedMovements: ReservedMovement[];
 };
 
 // ---- Estoque dos Técnicos ----

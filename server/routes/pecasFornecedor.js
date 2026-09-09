@@ -3,6 +3,7 @@ const { db, transaction } = require("../db");
 const { requireAuth } = require("../auth");
 const { nowStamp } = require("../util");
 const { broadcast } = require("../realtime");
+const { gerarPlanilha } = require("../xlsx");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -243,12 +244,7 @@ router.get("/pedidos/:numero", (req, res) => {
   });
 });
 
-function csvField(v) {
-  const s = String(v ?? "");
-  return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-router.get("/planilha", (req, res) => {
+router.get("/planilha", async (req, res) => {
   const { pedidoNumero, status, fornecedorId, busca } = req.query;
   const where = [];
   const params = [];
@@ -268,30 +264,41 @@ router.get("/planilha", (req, res) => {
     ORDER BY p.pedido_numero DESC, p.id ASC LIMIT 2000`;
   const pecas = db.prepare(sql).all(...params);
 
-  const linhas = [
-    ["Pedido", "Codigo", "Serial", "Descricao", "EAN", "Marca", "Defeito", "Fornecedor", "Status", "RMA relacionado", "Data"].join(";"),
-    ...pecas.map((p) =>
-      [
-        p.pedido_numero,
-        p.codigo,
-        p.serial,
-        p.descricao,
-        p.ean,
-        p.marca,
-        p.defeito,
-        p.fornecedor_nome,
-        STATUS_LABEL[p.status] || p.status,
-        p.rma_relacionado,
-        p.created_at,
-      ]
-        .map(csvField)
-        .join(";")
-    ),
-  ];
-  const nomeArquivo = pedidoNumero ? `pedido_${pedidoNumero}.csv` : `pecas_fornecedor_${nowStamp().slice(0, 10)}.csv`;
-  res.setHeader("Content-Type", "text/csv; charset=utf-8");
-  res.setHeader("Content-Disposition", `attachment; filename="${nomeArquivo}"`);
-  res.send("﻿" + linhas.join("\r\n"));
+  const periodo = pedidoNumero
+    ? `Pedido ${pedidoNumero}`
+    : [status && STATUS_LABEL[status], fornecedorId && "fornecedor selecionado", busca && `busca "${busca}"`]
+        .filter(Boolean)
+        .join(" · ") || "Todos os registros";
+
+  const nomeArquivo = pedidoNumero ? `pedido_${pedidoNumero}.xlsx` : `pecas_fornecedor_${nowStamp().slice(0, 10)}.xlsx`;
+
+  try {
+    const buffer = await gerarPlanilha({
+      titulo: pedidoNumero ? `Pedido ${pedidoNumero} — Peças para Fornecedor` : "Peças para Fornecedor",
+      periodo,
+      geradoPor: req.user.name,
+      colunas: [
+        { key: "pedido_numero", header: "Pedido", minWidth: 16, maxWidth: 20 },
+        { key: "codigo", header: "Código", minWidth: 8, maxWidth: 14 },
+        { key: "serial", header: "Serial", minWidth: 8, maxWidth: 18 },
+        { key: "descricao", header: "Descrição", minWidth: 16, maxWidth: 32, wrap: true },
+        { key: "ean", header: "EAN", minWidth: 8, maxWidth: 16 },
+        { key: "marca", header: "Marca", minWidth: 8, maxWidth: 16 },
+        { key: "defeito", header: "Defeito", minWidth: 16, maxWidth: 34, wrap: true },
+        { key: "fornecedor_nome", header: "Fornecedor", minWidth: 14, maxWidth: 26, wrap: true },
+        { key: "status_label", header: "Status", minWidth: 12, maxWidth: 20 },
+        { key: "rma_relacionado", header: "RMA relacionado", minWidth: 12, maxWidth: 22 },
+        { key: "created_at", header: "Data", type: "date", minWidth: 14, maxWidth: 18 },
+      ],
+      linhas: pecas.map((p) => ({ ...p, status_label: STATUS_LABEL[p.status] || p.status })),
+    });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${nomeArquivo}"`);
+    res.send(buffer);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Não foi possível gerar a planilha." });
+  }
 });
 
 router.get("/pecas/:id", (req, res) => {

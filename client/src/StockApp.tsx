@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, BarChart3, Boxes, ChevronRight,
+  Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, BarChart3, Bookmark, Boxes, ChevronRight,
   ClipboardList, Download, History, LayoutDashboard, LogOut, Menu, PackagePlus,
   Pencil, Plus, RefreshCw, Search, ShieldCheck, TriangleAlert, Users as UsersIcon, X,
 } from "lucide-react";
 import { api } from "./api";
-import type { Data, Member, Movement, Order, Part, User } from "./types";
+import type { Data, Member, Movement, Order, Part, ReservedMovement, User } from "./types";
 import UsersPanel from "./UsersPanel";
 import { useRealtime } from "./useRealtime";
 
-const empty: Data = { parts: [], movements: [], orders: [], members: [], reasons: [] };
+const empty: Data = { parts: [], movements: [], orders: [], members: [], reasons: [], reservedMovements: [] };
 
 const fmt = (n: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(n);
 const dt = (s: string) => new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
@@ -20,6 +20,7 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
     ["dashboard", "Visão geral", LayoutDashboard],
     ["estoque", "Estoque", Boxes],
     ["movimentar", "Movimentar", ArrowDownToLine],
+    ["reservados", "Reservados", Bookmark],
     ["ordens", "Ordens", ClipboardList],
     ["historico", "Histórico", History],
     ["relatorios", "Relatórios", BarChart3],
@@ -32,7 +33,7 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [mobile, setMobile] = useState(false);
-  const [modal, setModal] = useState<null | "order" | "part">(null);
+  const [modal, setModal] = useState<null | "order" | "part" | "reserva">(null);
   const [editingPart, setEditingPart] = useState<Part | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [from, setFrom] = useState("");
@@ -74,7 +75,7 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
         );
   }, [data.movements, search]);
 
-  const low = data.parts.filter((p) => p.quantity <= p.minimum_stock);
+  const low = data.parts.filter((p) => p.quantity - p.reserved_quantity <= p.minimum_stock);
   const total = data.parts.reduce((s, p) => s + p.quantity, 0);
   const week = data.movements.filter((m) => Date.now() - new Date(m.created_at.replace(" ", "T") + "Z").getTime() < 7 * 864e5);
   const outWeek = week.filter((m) => m.type === "SAIDA").reduce((s, m) => s + m.quantity, 0);
@@ -225,6 +226,8 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
                         <th>Categoria</th>
                         <th>Local</th>
                         <th className="num">Saldo</th>
+                        <th className="num">Reservado</th>
+                        <th className="num">Saldo final</th>
                         <th>Status</th>
                         {isAdmin && <th></th>}
                       </tr>
@@ -244,9 +247,13 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
                           <td className="num">
                             <b>{fmt(p.quantity)}</b>
                           </td>
+                          <td className="num">{p.reserved_quantity ? fmt(p.reserved_quantity) : "—"}</td>
+                          <td className="num">
+                            <b>{fmt(p.quantity - p.reserved_quantity)}</b>
+                          </td>
                           <td>
-                            <span className={p.quantity <= p.minimum_stock ? "status warn" : "status ok"}>
-                              {p.quantity <= p.minimum_stock ? "Baixo" : "Disponível"}
+                            <span className={p.quantity - p.reserved_quantity <= p.minimum_stock ? "status warn" : "status ok"}>
+                              {p.quantity - p.reserved_quantity <= p.minimum_stock ? "Baixo" : "Disponível"}
                             </span>
                           </td>
                           {isAdmin && (
@@ -286,6 +293,65 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
                 </div>
                 <Panel title="Últimas movimentações">
                   <MovementTable rows={data.movements.slice(0, 15)} />
+                </Panel>
+              </section>
+            )}
+            {tab === "reservados" && (
+              <section>
+                <div className="action-grid">
+                  <button className="big-action in" onClick={() => setModal("reserva")}>
+                    <Bookmark />
+                    <span>
+                      <b>Reservar peças</b>
+                      <small>Separe peças que os técnicos vão usar para montar máquinas</small>
+                    </span>
+                    <ChevronRight />
+                  </button>
+                  <button className="big-action out" onClick={() => setModal("reserva")}>
+                    <ArrowUpFromLine />
+                    <span>
+                      <b>Liberar reserva</b>
+                      <small>Devolva peças reservadas que não foram usadas</small>
+                    </span>
+                    <ChevronRight />
+                  </button>
+                </div>
+                <div className="table-card" style={{ marginBottom: 18 }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Código</th>
+                        <th>Peça</th>
+                        <th className="num">Saldo</th>
+                        <th className="num">Reservado</th>
+                        <th className="num">Saldo final</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.parts
+                        .filter((p) => p.reserved_quantity > 0)
+                        .map((p) => (
+                          <tr key={p.id}>
+                            <td>
+                              <b className="code">{p.code}</b>
+                            </td>
+                            <td>
+                              <strong>{p.name}</strong>
+                              <small>{p.unit}</small>
+                            </td>
+                            <td className="num">{fmt(p.quantity)}</td>
+                            <td className="num">
+                              <b>{fmt(p.reserved_quantity)}</b>
+                            </td>
+                            <td className="num">{fmt(p.quantity - p.reserved_quantity)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                  {!data.parts.some((p) => p.reserved_quantity > 0) && <Empty text="Nenhuma peça reservada no momento." />}
+                </div>
+                <Panel title="Últimas movimentações de reservados">
+                  <ReservedMovementTable rows={data.reservedMovements.slice(0, 15)} />
                 </Panel>
               </section>
             )}
@@ -361,6 +427,16 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
             setModal(null);
             load();
             setTab("ordens");
+          }}
+        />
+      )}
+      {modal === "reserva" && (
+        <ReservaModal
+          parts={data.parts}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null);
+            load();
           }}
         />
       )}
@@ -500,6 +576,50 @@ function MovementTable({ rows }: { rows: Movement[] }) {
   );
 }
 
+function ReservedMovementTable({ rows }: { rows: ReservedMovement[] }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Peça</th>
+            <th>Tipo</th>
+            <th>Motivo</th>
+            <th>Responsável</th>
+            <th className="num">Qtd.</th>
+            <th className="num">Reservado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((m) => (
+            <tr key={m.id}>
+              <td>{dt(m.created_at)}</td>
+              <td>
+                <b className="code">{m.code}</b>
+                <small>{m.part_name}</small>
+              </td>
+              <td>
+                <span className={m.type === "RESERVAR" ? "pill in" : "pill out"}>{m.type}</span>
+              </td>
+              <td>{m.reason}</td>
+              <td>{m.responsible}</td>
+              <td className="num">
+                <b>
+                  {m.type === "RESERVAR" ? "+" : "−"}
+                  {fmt(m.quantity)}
+                </b>
+              </td>
+              <td className="num">{fmt(m.new_reserved)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {!rows.length && <Empty text="Nenhuma movimentação de reserva ainda." />}
+    </div>
+  );
+}
+
 function Empty({ text }: { text: string }) {
   return (
     <div className="empty">
@@ -610,6 +730,115 @@ function OrderModal({ parts, onClose, onSaved }: { parts: Part[]; members: Membe
         </button>
         <button className="primary" disabled={saving || !items.length || !reason.trim()} onClick={save}>
           {saving ? "Registrando…" : "Confirmar ordem"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function ReservaModal({ parts, onClose, onSaved }: { parts: Part[]; onClose: () => void; onSaved: () => void }) {
+  const [type, setType] = useState<"RESERVAR" | "LIBERAR">("RESERVAR");
+  const [reason, setReason] = useState("");
+  const [notes, setNotes] = useState("");
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState<{ partId: number; quantity: number }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  const found = parts.filter((p) => (p.code + " " + p.name).toLowerCase().includes(query.toLowerCase())).slice(0, 8);
+  const add = (id: number) => {
+    setItems((x) => (x.some((i) => i.partId === id) ? x : [...x, { partId: id, quantity: 1 }]));
+    setQuery("");
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setErr("");
+    try {
+      await api.post("/api/reservados", { type, reason, notes, items });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível registrar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Movimentar reservados" subtitle="Separe ou libere peças reservadas para montagem de máquinas." onClose={onClose}>
+      <div className="segmented">
+        <button className={type === "RESERVAR" ? "active in" : ""} onClick={() => setType("RESERVAR")}>
+          <Bookmark />
+          Reservar
+        </button>
+        <button className={type === "LIBERAR" ? "active out" : ""} onClick={() => setType("LIBERAR")}>
+          <ArrowUpFromLine />
+          Liberar reserva
+        </button>
+      </div>
+      <Field label="Motivo *">
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: Montagem de máquina para estoque, devolução…" />
+      </Field>
+      <Field label="Adicionar peças">
+        <div className="part-search">
+          <Search />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Digite o código ou nome da peça" />
+          {query && (
+            <div className="results">
+              {found.map((p) => (
+                <button key={p.id} onClick={() => add(p.id)}>
+                  <span>
+                    <b>{p.code}</b> · {p.name}
+                  </span>
+                  <small>
+                    Saldo: {fmt(p.quantity)} · Reservado: {fmt(p.reserved_quantity)}
+                  </small>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </Field>
+      <div className="cart">
+        <div className="cart-head">
+          <b>Itens</b>
+          <span>{items.length} selecionados</span>
+        </div>
+        {items.map((i, idx) => {
+          const p = parts.find((x) => x.id === i.partId)!;
+          return (
+            <div className="cart-row" key={i.partId}>
+              <span>
+                <b>{p.code}</b>
+                <small>
+                  {p.name} · saldo {fmt(p.quantity)} · reservado {fmt(p.reserved_quantity)}
+                </small>
+              </span>
+              <input
+                type="number"
+                min="0.01"
+                step="1"
+                value={i.quantity}
+                onChange={(e) => setItems((x) => x.map((z, j) => (j === idx ? { ...z, quantity: Number(e.target.value) } : z)))}
+              />
+              <button onClick={() => setItems((x) => x.filter((z) => z.partId !== i.partId))}>
+                <X />
+              </button>
+            </div>
+          );
+        })}
+        {!items.length && <p className="cart-empty">Pesquise uma peça acima para começar a lista.</p>}
+      </div>
+      <Field label="Observação">
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Detalhes adicionais, se precisar" />
+      </Field>
+      {err && <div className="error">{err}</div>}
+      <div className="modal-actions">
+        <button className="secondary" onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="primary" disabled={saving || !items.length || !reason.trim()} onClick={save}>
+          {saving ? "Registrando…" : type === "RESERVAR" ? "Confirmar reserva" : "Confirmar liberação"}
         </button>
       </div>
     </Modal>
