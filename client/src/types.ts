@@ -298,6 +298,7 @@ export type LogLado = {
 
 export type LogMontante = {
   id: number;
+  floor_id: number;
   code: string;
   name: string;
   x: number;
@@ -307,10 +308,18 @@ export type LogMontante = {
   rotation: 0 | 90 | 180 | 270;
   color: string;
   active: number;
+  is_holding_area: number;
   sides: LogLado[];
 };
 
-export type LogMapa = { racks: LogMontante[] };
+export type LogAndar = {
+  id: number;
+  code: string;
+  name: string;
+  active: number;
+};
+
+export type LogMapa = { floors: LogAndar[]; racks: LogMontante[] };
 
 export type LogTipoOperacao = "ENTRADA" | "SAIDA" | "TRANSFERENCIA" | "AJUSTE";
 

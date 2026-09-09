@@ -17,9 +17,12 @@ function groupBy(rows, key) {
 }
 
 // ---- Mapa completo do galpão ----
-// Montante (desenhado livremente, com x/y/largura/altura) > Lado > Prateleira.
+// Andar > Montante (desenhado livremente, com x/y/largura/altura) > Lado >
+// Prateleira. Vem tudo numa resposta só: o frontend filtra por andar
+// selecionado no próprio mapa, sem precisar de outra ida ao servidor.
 
 router.get("/", (req, res) => {
+  const floors = db.prepare("SELECT * FROM logistics_floors ORDER BY display_order, code").all();
   const racks = db.prepare("SELECT * FROM logistics_racks ORDER BY id").all();
   const sides = db.prepare("SELECT * FROM logistics_rack_sides ORDER BY display_order, code").all();
   const positions = db
@@ -43,7 +46,67 @@ router.get("/", (req, res) => {
     })),
   }));
 
-  res.json({ racks: tree });
+  res.json({ floors, racks: tree });
+});
+
+// ---- Andares ----
+
+router.post("/andares", requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const code = String(b.code || "").trim().toUpperCase();
+  const name = String(b.name || "").trim();
+  if (!code || !name) return res.status(400).json({ error: "Código e nome são obrigatórios." });
+  const now = nowStamp();
+  try {
+    const result = db
+      .prepare("INSERT INTO logistics_floors (code,name,display_order,active,created_by,created_at,updated_by,updated_at) VALUES (?,?,?,1,?,?,?,?)")
+      .run(code, name, Number(b.displayOrder) || 0, req.user.id, now, req.user.id, now);
+    registrarAuditoria({ action: "andar.criar", entityType: "logistics_floors", entityId: result.lastInsertRowid, user: req.user, newData: { code, name } });
+    broadcast("logistica");
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (error) {
+    res.status(400).json({ error: "Já existe um andar com esse código." });
+  }
+});
+
+router.patch("/andares/:id", requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const floor = db.prepare("SELECT * FROM logistics_floors WHERE id = ?").get(id);
+  if (!floor) return res.status(404).json({ error: "Andar não encontrado." });
+  const b = req.body || {};
+  const fields = [];
+  const values = [];
+  if (typeof b.name === "string") {
+    fields.push("name = ?");
+    values.push(b.name.trim());
+  }
+  if (typeof b.active === "boolean") {
+    fields.push("active = ?");
+    values.push(b.active ? 1 : 0);
+  }
+  if (!fields.length) return res.status(400).json({ error: "Nada para atualizar." });
+  fields.push("updated_by = ?", "updated_at = ?");
+  values.push(req.user.id, nowStamp(), id);
+  db.prepare(`UPDATE logistics_floors SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  registrarAuditoria({ action: "andar.editar", entityType: "logistics_floors", entityId: id, user: req.user, previousData: floor, newData: b });
+  broadcast("logistica");
+  res.json({ ok: true });
+});
+
+router.delete("/andares/:id", requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const floor = db.prepare("SELECT * FROM logistics_floors WHERE id = ?").get(id);
+  if (!floor) return res.status(404).json({ error: "Andar não encontrado." });
+  const totalAndares = db.prepare("SELECT COUNT(*) AS n FROM logistics_floors").get().n;
+  if (totalAndares <= 1) return res.status(400).json({ error: "Precisa existir pelo menos um andar." });
+  const montantesNesseAndar = db.prepare("SELECT COUNT(*) AS n FROM logistics_racks WHERE floor_id = ?").get(id).n;
+  if (montantesNesseAndar > 0) {
+    return res.status(400).json({ error: "Esse andar ainda tem montantes. Mova ou exclua os montantes antes de excluir o andar." });
+  }
+  db.prepare("DELETE FROM logistics_floors WHERE id = ?").run(id);
+  registrarAuditoria({ action: "andar.excluir", entityType: "logistics_floors", entityId: id, user: req.user, previousData: floor });
+  broadcast("logistica");
+  res.json({ ok: true });
 });
 
 // Busca por produto (destaca posições onde ele está guardado) ou por
@@ -120,17 +183,21 @@ router.get("/posicoes/:id", (req, res) => {
 
 router.post("/montantes", requireAdmin, (req, res) => {
   const b = req.body || {};
+  const floorId = Number(b.floorId);
   const code = String(b.code || "").trim().toUpperCase();
   const name = String(b.name || "").trim();
-  if (!code || !name) return res.status(400).json({ error: "Código e nome são obrigatórios." });
+  if (!floorId || !code || !name) return res.status(400).json({ error: "Andar, código e nome são obrigatórios." });
+  const floor = db.prepare("SELECT id FROM logistics_floors WHERE id = ?").get(floorId);
+  if (!floor) return res.status(400).json({ error: "Andar inválido." });
   const now = nowStamp();
   try {
     const result = db
       .prepare(
-        `INSERT INTO logistics_racks (code,name,x,y,width,height,rotation,color,active,created_by,created_at,updated_by,updated_at)
-         VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?)`
+        `INSERT INTO logistics_racks (floor_id,code,name,x,y,width,height,rotation,color,active,created_by,created_at,updated_by,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?,?)`
       )
       .run(
+        floorId,
         code,
         name,
         Number.isFinite(Number(b.x)) ? Number(b.x) : 20,
@@ -144,7 +211,7 @@ router.post("/montantes", requireAdmin, (req, res) => {
         req.user.id,
         now
       );
-    registrarAuditoria({ action: "montante.criar", entityType: "logistics_racks", entityId: result.lastInsertRowid, user: req.user, newData: { code, name } });
+    registrarAuditoria({ action: "montante.criar", entityType: "logistics_racks", entityId: result.lastInsertRowid, user: req.user, newData: { floorId, code, name } });
     broadcast("logistica");
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (error) {
@@ -159,6 +226,12 @@ router.patch("/montantes/:id", requireAdmin, (req, res) => {
   const b = req.body || {};
   const fields = [];
   const values = [];
+  if (b.floorId !== undefined) {
+    const floor = db.prepare("SELECT id FROM logistics_floors WHERE id = ?").get(Number(b.floorId));
+    if (!floor) return res.status(400).json({ error: "Andar inválido." });
+    fields.push("floor_id = ?");
+    values.push(Number(b.floorId));
+  }
   if (typeof b.name === "string") {
     fields.push("name = ?");
     values.push(b.name.trim());
@@ -207,6 +280,9 @@ router.delete("/montantes/:id", requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const rack = db.prepare("SELECT * FROM logistics_racks WHERE id = ?").get(id);
   if (!rack) return res.status(404).json({ error: "Montante não encontrado." });
+  if (rack.is_holding_area) {
+    return res.status(400).json({ error: "Esse é o estoque de recebimento usado pelo cadastro de produtos e não pode ser excluído." });
+  }
   if (temUso("rack", id)) {
     return res.status(400).json({ error: "Esse montante já tem posições com estoque ou histórico. Inative em vez de excluir." });
   }
@@ -341,6 +417,10 @@ router.delete("/lados/:id", requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const side = db.prepare("SELECT * FROM logistics_rack_sides WHERE id = ?").get(id);
   if (!side) return res.status(404).json({ error: "Lado não encontrado." });
+  const rack = db.prepare("SELECT is_holding_area FROM logistics_racks WHERE id = ?").get(side.rack_id);
+  if (rack?.is_holding_area) {
+    return res.status(400).json({ error: "Esse lado é usado pelo cadastro de produtos e não pode ser excluído." });
+  }
   if (temUso("side", id)) {
     return res.status(400).json({ error: "Esse lado já tem posições com estoque ou histórico. Inative em vez de excluir." });
   }
