@@ -78,10 +78,15 @@ button { cursor: pointer; }
 .log-nav{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
 .log-nav select{border:1px solid #d8e2dc;border-radius:9px;background:#fbfcfb;padding:10px 12px;outline:none;color:#24372e;height:42px}
 .log-map-layout{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
-.rack-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
-.rack{background:#fff;border:1px solid #e0e8e3;border-radius:14px;padding:12px;box-shadow:0 4px 16px #1c3e2f08}
-.rack-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;color:#41534b;margin-bottom:8px}
-.rack-levels{display:flex;flex-direction:column-reverse;gap:6px}
+.rack-grid{display:flex;flex-wrap:wrap;align-items:flex-start;gap:14px}
+.rack{background:#fff;border:1px solid #e0e8e3;border-radius:14px;padding:12px;box-shadow:0 4px 16px #1c3e2f08;width:fit-content}
+.rack-head{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:11px;font-weight:800;color:#41534b;margin-bottom:8px}
+.rack-sides{display:flex;gap:10px;align-items:flex-start}
+.side-column{width:150px}
+.side-head{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:10px;font-weight:800;color:#6f8279;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;padding:0 2px}
+.add-side-btn{border:1px dashed #c7d6cd;background:transparent;border-radius:10px;width:80px;min-height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#6f8279;font-size:11px;font-weight:700}
+.add-side-btn:hover{border-color:#0caf65;color:#0caf65}
+.rack-levels{display:flex;flex-direction:column-reverse;gap:6px;max-height:420px;overflow-y:auto;padding-right:2px}
 .rack-level{border-radius:9px;padding:8px 9px;border:1px solid transparent;cursor:pointer;text-align:left}
 .rack-level b{display:block;font-size:11px;font-family:ui-monospace,monospace}
 .rack-level small{display:block;font-size:10px;margin-top:3px}

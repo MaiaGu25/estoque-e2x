@@ -276,7 +276,8 @@ export type LogProduto = {
 export type LogPosicao = {
   id: number;
   rack_id: number;
-  level_number: number;
+  side_id: number;
+  shelf_number: number;
   code: string;
   name: string;
   active: number;
@@ -285,15 +286,24 @@ export type LogPosicao = {
   total_quantity: number;
 };
 
+export type LogLado = {
+  id: number;
+  rack_id: number;
+  code: string;
+  name: string;
+  shelves_count: number;
+  active: number;
+  positions: LogPosicao[];
+};
+
 export type LogMontante = {
   id: number;
   aisle_id: number;
   code: string;
   name: string;
-  levels_count: number;
   color: string;
   active: number;
-  positions: LogPosicao[];
+  sides: LogLado[];
 };
 
 export type LogCorredor = {

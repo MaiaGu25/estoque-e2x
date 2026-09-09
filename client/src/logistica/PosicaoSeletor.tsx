@@ -6,7 +6,7 @@ import { Field, fmt } from "./ui";
 
 type PosicaoResultado = { id: number; code: string; name: string };
 
-// Seletor em cascata (fileira -> corredor -> montante -> nível/posição).
+// Seletor em cascata (fileira -> corredor -> montante -> lado -> prateleira).
 // Simples de qualquer pessoa entender e evita a complexidade de um mapa
 // livre para escolher uma posição num galpão pequeno/médio.
 export function PosicaoSeletor({
@@ -25,10 +25,12 @@ export function PosicaoSeletor({
   const [rowId, setRowId] = useState<number | null>(null);
   const [aisleId, setAisleId] = useState<number | null>(null);
   const [rackId, setRackId] = useState<number | null>(null);
+  const [sideId, setSideId] = useState<number | null>(null);
 
   const row = mapa.rows.find((r) => r.id === rowId);
   const aisle = row?.aisles.find((a) => a.id === aisleId);
   const rack = aisle?.racks.find((r) => r.id === rackId);
+  const side = rack?.sides.find((s) => s.id === sideId);
 
   return (
     <div className="form-grid">
@@ -39,6 +41,7 @@ export function PosicaoSeletor({
             setRowId(Number(e.target.value) || null);
             setAisleId(null);
             setRackId(null);
+            setSideId(null);
             onChange(null);
           }}
         >
@@ -59,6 +62,7 @@ export function PosicaoSeletor({
           onChange={(e) => {
             setAisleId(Number(e.target.value) || null);
             setRackId(null);
+            setSideId(null);
             onChange(null);
           }}
         >
@@ -78,6 +82,7 @@ export function PosicaoSeletor({
           value={rackId ?? ""}
           onChange={(e) => {
             setRackId(Number(e.target.value) || null);
+            setSideId(null);
             onChange(null);
           }}
         >
@@ -91,10 +96,29 @@ export function PosicaoSeletor({
             ))}
         </select>
       </Field>
-      <Field label={label}>
-        <select disabled={!rack} value={value ?? ""} onChange={(e) => onChange(Number(e.target.value) || null)}>
+      <Field label="Lado">
+        <select
+          disabled={!rack}
+          value={sideId ?? ""}
+          onChange={(e) => {
+            setSideId(Number(e.target.value) || null);
+            onChange(null);
+          }}
+        >
           <option value="">Selecione…</option>
-          {(rack?.positions || [])
+          {(rack?.sides || [])
+            .filter((s) => s.active)
+            .map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.code})
+              </option>
+            ))}
+        </select>
+      </Field>
+      <Field label={label}>
+        <select disabled={!side} value={value ?? ""} onChange={(e) => onChange(Number(e.target.value) || null)}>
+          <option value="">Selecione…</option>
+          {(side?.positions || [])
             .filter((p) => p.active && !p.blocked && p.id !== excludeId)
             .map((p) => (
               <option key={p.id} value={p.id}>
@@ -163,7 +187,7 @@ export function ProdutoBusca({ onSelect, placeholder }: { onSelect: (p: LogProdu
   );
 }
 
-// Busca direta por identificador ou nome de posição (ex.: F01-C02-M05-N03),
+// Busca direta por identificador ou nome de posição (ex.: F01-C02-M05-A-P003),
 // usada nos filtros de histórico e na busca do mapa.
 export function PosicaoBusca({ onSelect, placeholder }: { onSelect: (p: PosicaoResultado) => void; placeholder?: string }) {
   const [query, setQuery] = useState("");
@@ -197,7 +221,7 @@ export function PosicaoBusca({ onSelect, placeholder }: { onSelect: (p: PosicaoR
             selecionar(resultados[0]);
           }
         }}
-        placeholder={placeholder || "Digite o identificador da posição (ex.: F01-C02-M05-N03)"}
+        placeholder={placeholder || "Digite o identificador da posição (ex.: F01-C02-M05-A-P003)"}
       />
       {query && (
         <div className="results">

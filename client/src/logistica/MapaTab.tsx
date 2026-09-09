@@ -10,7 +10,16 @@ type BuscaResultado = {
 };
 
 type PosicaoDetalhe = {
-  posicao: LogPosicao & { rack_code: string; rack_name: string; aisle_code: string; aisle_name: string; row_code: string; row_name: string };
+  posicao: LogPosicao & {
+    side_code: string;
+    side_name: string;
+    rack_code: string;
+    rack_name: string;
+    aisle_code: string;
+    aisle_name: string;
+    row_code: string;
+    row_name: string;
+  };
   produtos: { quantity: number; id: number; code: string; name: string; unit: string }[];
   movimentacoes: any[];
 };
@@ -42,6 +51,7 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
   const [modalCorredor, setModalCorredor] = useState<null | "novo" | "editar">(null);
   const [modalMontante, setModalMontante] = useState<null | "novo" | "editar">(null);
   const [rackEditando, setRackEditando] = useState<any>(null);
+  const [modalLado, setModalLado] = useState<null | { rackId: number; lado?: any }>(null);
 
   const row = mapa.rows.find((r) => r.id === rowId) || null;
   const aisle = row?.aisles.find((a) => a.id === aisleId) || null;
@@ -69,7 +79,9 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
     for (const r of mapa.rows) {
       for (const a of r.aisles) {
         for (const rack of a.racks) {
-          for (const pos of rack.positions) idx[pos.id] = { rowId: r.id, aisleId: a.id };
+          for (const side of rack.sides) {
+            for (const pos of side.positions) idx[pos.id] = { rowId: r.id, aisleId: a.id };
+          }
         }
       }
     }
@@ -145,7 +157,7 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
       <div className="edit-toolbar">
         <div className="part-search" style={{ minWidth: 280 }}>
           <Search />
-          <input value={query} onChange={(e) => buscar(e.target.value)} placeholder="Buscar produto ou posição (ex.: F01-C02-M05-N03)" />
+          <input value={query} onChange={(e) => buscar(e.target.value)} placeholder="Buscar produto ou posição (ex.: F01-C02-M05-A-P003)" />
         </div>
         {isAdmin && (
           <div className="segmented grow" style={{ maxWidth: 260, margin: 0 }}>
@@ -240,19 +252,42 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
                   </button>
                 )}
               </div>
-              <div className="rack-levels">
-                {rack.positions.map((p) => (
-                  <button
-                    key={p.id}
-                    className={`${levelClass(p, p.id === selectedPositionId)} ${
-                      matchIds ? (matchIds.has(p.id) ? "map-search-hit" : "map-search-dim") : ""
-                    }`}
-                    onClick={() => centralizar(p.id)}
-                  >
-                    <b>{p.code}</b>
-                    <small>{levelStatusText(p)}</small>
-                  </button>
+              <div className="rack-sides">
+                {rack.sides.map((side) => (
+                  <div className="side-column" key={side.id}>
+                    <div className="side-head">
+                      <span>
+                        Lado {side.code}
+                        {side.name && side.name !== `Lado ${side.code}` ? ` · ${side.name}` : ""}
+                      </span>
+                      {editMode && isAdmin && (
+                        <button className="icon-btn" title="Editar lado" onClick={() => setModalLado({ rackId: rack.id, lado: side })}>
+                          <Pencil size={12} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="rack-levels">
+                      {side.positions.map((p) => (
+                        <button
+                          key={p.id}
+                          className={`${levelClass(p, p.id === selectedPositionId)} ${
+                            matchIds ? (matchIds.has(p.id) ? "map-search-hit" : "map-search-dim") : ""
+                          }`}
+                          onClick={() => centralizar(p.id)}
+                        >
+                          <b>{p.code}</b>
+                          <small>{levelStatusText(p)}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
+                {editMode && isAdmin && (
+                  <button className="add-side-btn" onClick={() => setModalLado({ rackId: rack.id })}>
+                    <Plus size={14} /> Lado
+                  </button>
+                )}
+                {!rack.sides.length && !editMode && <Empty text="Sem lados cadastrados." />}
               </div>
             </div>
           ))}
@@ -335,6 +370,17 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
           }}
         />
       )}
+      {modalLado && (
+        <LadoModal
+          rackId={modalLado.rackId}
+          lado={modalLado.lado}
+          onClose={() => setModalLado(null)}
+          onSaved={() => {
+            setModalLado(null);
+            onAtualizado();
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -393,7 +439,7 @@ function PosicaoDetalhePainel({
             {posicao.code}
           </b>
           <p style={{ margin: "6px 0 0", fontSize: 12, color: "#7b8e85" }}>
-            {posicao.row_name} · {posicao.aisle_name} · {posicao.rack_name} · Nível {posicao.level_number}
+            {posicao.row_name} · {posicao.aisle_name} · {posicao.rack_name} · Lado {posicao.side_code} · Prateleira {posicao.shelf_number}
           </p>
         </div>
       </div>
@@ -661,7 +707,6 @@ function MontanteModal({
   const editando = !!montante;
   const [code, setCode] = useState(montante?.code || "");
   const [name, setName] = useState(montante?.name || "");
-  const [levelsCount, setLevelsCount] = useState(montante?.levels_count ?? 4);
   const [color, setColor] = useState(montante?.color || "");
   const [active, setActive] = useState(montante ? !!montante.active : true);
   const [err, setErr] = useState("");
@@ -672,9 +717,9 @@ function MontanteModal({
     setErr("");
     try {
       if (editando) {
-        await api.patch(`/api/logistica/mapa/montantes/${montante.id}`, { name, color, active, levelsCount: Number(levelsCount) });
+        await api.patch(`/api/logistica/mapa/montantes/${montante.id}`, { name, color, active });
       } else {
-        await api.post("/api/logistica/mapa/montantes", { aisleId, code, name, levelsCount: Number(levelsCount), color });
+        await api.post("/api/logistica/mapa/montantes", { aisleId, code, name, color });
       }
       onSaved();
     } catch (e) {
@@ -698,7 +743,11 @@ function MontanteModal({
   };
 
   return (
-    <Modal title={editando ? "Editar montante" : "Novo montante"} subtitle="Cada nível do montante vira automaticamente uma posição no galpão." onClose={onClose}>
+    <Modal
+      title={editando ? "Editar montante" : "Novo montante"}
+      subtitle={editando ? undefined : "Depois de criar, adicione um ou mais lados (cada um com sua própria quantidade de prateleiras)."}
+      onClose={onClose}
+    >
       <div className="form-grid">
         {!editando && (
           <Field label="Código *">
@@ -707,9 +756,6 @@ function MontanteModal({
         )}
         <Field label="Nome *">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Montante 5" />
-        </Field>
-        <Field label="Quantidade de níveis *">
-          <input type="number" min={1} max={20} value={levelsCount} onChange={(e) => setLevelsCount(e.target.value)} />
         </Field>
         <Field label="Cor (opcional)">
           <input value={color} onChange={(e) => setColor(e.target.value)} placeholder="#0caf65" />
@@ -720,9 +766,100 @@ function MontanteModal({
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Montante ativo
         </label>
       )}
-      {editando && Number(levelsCount) < montante.levels_count && (
+      {err && <div className="error">{err}</div>}
+      <div className="modal-actions">
+        {editando && (
+          <button className="secondary" onClick={excluir} disabled={saving} style={{ marginRight: "auto", color: "#b64a3c" }}>
+            <Trash2 size={15} /> Excluir
+          </button>
+        )}
+        <button className="secondary" onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="primary" disabled={saving || !name.trim() || (!editando && !code.trim())} onClick={salvar}>
+          {saving ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function LadoModal({
+  rackId,
+  lado,
+  onClose,
+  onSaved,
+}: {
+  rackId: number;
+  lado?: any;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const editando = !!lado;
+  const [code, setCode] = useState(lado?.code || "");
+  const [name, setName] = useState(lado?.name || "");
+  const [shelvesCount, setShelvesCount] = useState(lado?.shelves_count ?? 8);
+  const [active, setActive] = useState(lado ? !!lado.active : true);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const salvar = async () => {
+    setSaving(true);
+    setErr("");
+    try {
+      if (editando) {
+        await api.patch(`/api/logistica/mapa/lados/${lado.id}`, { name, active, shelvesCount: Number(shelvesCount) });
+      } else {
+        await api.post("/api/logistica/mapa/lados", { rackId, code, name, shelvesCount: Number(shelvesCount) });
+      }
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível salvar o lado.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const excluir = async () => {
+    if (!confirm(`Excluir o lado ${lado.code}? Só é possível se ele nunca foi usado.`)) return;
+    setSaving(true);
+    setErr("");
+    try {
+      await api.del(`/api/logistica/mapa/lados/${lado.id}`);
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível excluir o lado.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={editando ? "Editar lado" : "Novo lado do montante"}
+      subtitle="Cada prateleira do lado vira automaticamente uma posição no galpão."
+      onClose={onClose}
+    >
+      <div className="form-grid">
+        {!editando && (
+          <Field label="Código *">
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Ex.: A" />
+          </Field>
+        )}
+        <Field label="Nome *">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Lado A (frente)" />
+        </Field>
+        <Field label="Quantidade de prateleiras *">
+          <input type="number" min={1} max={300} value={shelvesCount} onChange={(e) => setShelvesCount(e.target.value)} />
+        </Field>
+      </div>
+      {editando && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 14 }}>
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Lado ativo
+        </label>
+      )}
+      {editando && Number(shelvesCount) < lado.shelves_count && (
         <div className="error" style={{ background: "#fff8e6", color: "#8a6300", borderColor: "#ffe8a3" }}>
-          Reduzir os níveis só funciona se os níveis removidos estiverem vazios e sem histórico.
+          Reduzir as prateleiras só funciona se as removidas estiverem vazias e sem histórico.
         </div>
       )}
       {err && <div className="error">{err}</div>}
