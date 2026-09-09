@@ -86,18 +86,16 @@ export function PosicaoSeletor({
   );
 }
 
-// Busca de produto com resultados imediatos e Enter para selecionar o
-// primeiro resultado.
+// Busca de produto com resultados imediatos, Enter para selecionar o
+// primeiro resultado, e lista suspensa com sugestões assim que o campo é
+// clicado (mesmo sem digitar nada).
 export function ProdutoBusca({ onSelect, placeholder }: { onSelect: (p: LogProduto) => void; placeholder?: string }) {
   const [query, setQuery] = useState("");
   const [resultados, setResultados] = useState<LogProduto[]>([]);
+  const [aberto, setAberto] = useState(false);
 
   const buscar = async (q: string) => {
     setQuery(q);
-    if (!q.trim()) {
-      setResultados([]);
-      return;
-    }
     const r = await api.get<{ produtos: LogProduto[] }>(`/api/logistica/produtos/busca?q=${encodeURIComponent(q)}`);
     setResultados(r.produtos);
   };
@@ -106,6 +104,7 @@ export function ProdutoBusca({ onSelect, placeholder }: { onSelect: (p: LogProdu
     onSelect(p);
     setQuery("");
     setResultados([]);
+    setAberto(false);
   };
 
   return (
@@ -114,18 +113,23 @@ export function ProdutoBusca({ onSelect, placeholder }: { onSelect: (p: LogProdu
       <input
         value={query}
         onChange={(e) => buscar(e.target.value)}
+        onFocus={() => {
+          setAberto(true);
+          if (!query) buscar("");
+        }}
+        onBlur={() => setTimeout(() => setAberto(false), 150)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && resultados.length) {
             e.preventDefault();
             selecionar(resultados[0]);
           }
         }}
-        placeholder={placeholder || "Digite o código ou nome do produto"}
+        placeholder={placeholder || "Digite ou clique para ver os produtos"}
       />
-      {query && (
+      {aberto && (
         <div className="results">
           {resultados.map((p) => (
-            <button key={p.id} onClick={() => selecionar(p)}>
+            <button key={p.id} onMouseDown={(e) => e.preventDefault()} onClick={() => selecionar(p)}>
               <span>
                 <b>{p.code}</b> · {p.name}
               </span>
@@ -142,17 +146,15 @@ export function ProdutoBusca({ onSelect, placeholder }: { onSelect: (p: LogProdu
 }
 
 // Busca direta por identificador ou nome de posição (ex.: MA-A-P003),
-// usada nos filtros de histórico e na busca do mapa.
+// usada nos filtros de histórico e na busca do mapa - com a mesma lista
+// suspensa ao clicar do ProdutoBusca acima.
 export function PosicaoBusca({ onSelect, placeholder }: { onSelect: (p: PosicaoResultado) => void; placeholder?: string }) {
   const [query, setQuery] = useState("");
   const [resultados, setResultados] = useState<PosicaoResultado[]>([]);
+  const [aberto, setAberto] = useState(false);
 
   const buscar = async (q: string) => {
     setQuery(q);
-    if (!q.trim()) {
-      setResultados([]);
-      return;
-    }
     const r = await api.get<{ posicoes: PosicaoResultado[] }>(`/api/logistica/mapa/buscar?q=${encodeURIComponent(q)}`);
     setResultados(r.posicoes);
   };
@@ -161,6 +163,7 @@ export function PosicaoBusca({ onSelect, placeholder }: { onSelect: (p: PosicaoR
     onSelect(p);
     setQuery("");
     setResultados([]);
+    setAberto(false);
   };
 
   return (
@@ -169,18 +172,23 @@ export function PosicaoBusca({ onSelect, placeholder }: { onSelect: (p: PosicaoR
       <input
         value={query}
         onChange={(e) => buscar(e.target.value)}
+        onFocus={() => {
+          setAberto(true);
+          if (!query) buscar("");
+        }}
+        onBlur={() => setTimeout(() => setAberto(false), 150)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && resultados.length) {
             e.preventDefault();
             selecionar(resultados[0]);
           }
         }}
-        placeholder={placeholder || "Digite o identificador da posição (ex.: MA-A-P003)"}
+        placeholder={placeholder || "Digite ou clique para ver as posições"}
       />
-      {query && (
+      {aberto && (
         <div className="results">
           {resultados.map((p) => (
-            <button key={p.id} onClick={() => selecionar(p)}>
+            <button key={p.id} onMouseDown={(e) => e.preventDefault()} onClick={() => selecionar(p)}>
               <span>
                 <b className="code">{p.code}</b>
               </span>

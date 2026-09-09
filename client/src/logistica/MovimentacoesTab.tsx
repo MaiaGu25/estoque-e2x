@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, ChevronRight, ClipboardEdit } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, ChevronRight, ClipboardEdit, Inbox } from "lucide-react";
 import { api } from "../api";
 import type { LogMapa, LogProduto, User } from "../types";
-import { Field, fmt, Modal } from "./ui";
+import { Empty, Field, fmt, Modal } from "./ui";
 import { PosicaoSeletor, ProdutoBusca } from "./PosicaoSeletor";
 
-type ModalTipo = null | "entrada" | "saida" | "transferencia" | "ajuste";
+type ModalTipo = null | "entrada" | "saida" | "transferencia" | "ajuste" | "organizar";
 
 export default function MovimentacoesTab({ mapa, onRegistrado, usuario }: { mapa: LogMapa; onRegistrado: () => void; usuario: User }) {
   const [modal, setModal] = useState<ModalTipo>(null);
@@ -15,6 +15,7 @@ export default function MovimentacoesTab({ mapa, onRegistrado, usuario }: { mapa
     { tipo: "saida", titulo: "Saída", descricao: "Registrar retirada de mercadoria de uma posição", icon: ArrowUpFromLine, classe: "out" },
     { tipo: "transferencia", titulo: "Transferência", descricao: "Mover produto de uma posição para outra", icon: ArrowLeftRight, classe: "in" },
     { tipo: "ajuste", titulo: "Ajuste de inventário", descricao: "Corrigir o saldo com a contagem física", icon: ClipboardEdit, classe: "out" },
+    { tipo: "organizar", titulo: "Organizar estoque não organizado", descricao: "Mover para o montante certo o que ainda está no recebimento", icon: Inbox, classe: "in" },
   ];
 
   const fechar = () => setModal(null);
@@ -42,6 +43,7 @@ export default function MovimentacoesTab({ mapa, onRegistrado, usuario }: { mapa
       {modal === "saida" && <SaidaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
       {modal === "transferencia" && <TransferenciaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
       {modal === "ajuste" && <AjusteModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
+      {modal === "organizar" && <OrganizarModal mapa={mapa} usuario={usuario} onClose={fechar} onRegistrado={onRegistrado} />}
     </section>
   );
 }
@@ -368,6 +370,163 @@ function AjusteModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuar
           {saving ? "Registrando…" : "Confirmar ajuste"}
         </button>
       </div>
+    </Modal>
+  );
+}
+
+type ItemNaoOrganizado = { id: number; code: string; name: string; unit: string; quantity: number };
+
+// Estoque não organizado é só uma posição especial (o "recebimento"); mover
+// um item dela pra posição certa é uma transferência normal, com origem
+// travada. O modal fica aberto entre um item e outro pra organizar vários
+// de uma vez sem precisar reabrir.
+function OrganizarModal({
+  mapa,
+  usuario,
+  onClose,
+  onRegistrado,
+}: {
+  mapa: LogMapa;
+  usuario: User;
+  onClose: () => void;
+  onRegistrado: () => void;
+}) {
+  const holdingPositionId = mapa.racks.find((r) => r.is_holding_area)?.sides[0]?.positions[0]?.id ?? null;
+
+  const [itens, setItens] = useState<ItemNaoOrganizado[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [item, setItem] = useState<ItemNaoOrganizado | null>(null);
+  const [toPositionId, setToPositionId] = useState<number | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [reason, setReason] = useState("Organização de estoque");
+  const [responsible, setResponsible] = useState(usuario.name);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const carregar = async () => {
+    if (!holdingPositionId) {
+      setCarregando(false);
+      return;
+    }
+    setCarregando(true);
+    try {
+      const r = await api.get<{ produtos: ItemNaoOrganizado[] }>(`/api/logistica/mapa/posicoes/${holdingPositionId}`);
+      setItens(r.produtos);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  useEffect(() => {
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holdingPositionId]);
+
+  const escolher = (i: ItemNaoOrganizado) => {
+    setItem(i);
+    setToPositionId(null);
+    setQuantity(i.quantity);
+    setErr("");
+  };
+
+  const salvar = async () => {
+    if (!item || !holdingPositionId || !toPositionId || !reason.trim() || !responsible.trim() || quantity <= 0) {
+      return setErr("Escolha o destino, a quantidade, o motivo e o responsável.");
+    }
+    if (quantity > item.quantity) return setErr("A quantidade não pode ser maior do que a disponível.");
+    setSaving(true);
+    setErr("");
+    try {
+      await api.post("/api/logistica/movimentacoes/transferencia", {
+        productId: item.id,
+        fromPositionId: holdingPositionId,
+        toPositionId,
+        quantity,
+        reason,
+        responsible,
+      });
+      setItem(null);
+      onRegistrado();
+      await carregar();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível organizar esse item.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="Organizar estoque não organizado"
+      subtitle="Mova cada item recebido para o montante, lado e prateleira certos."
+      onClose={onClose}
+      wide
+    >
+      {!holdingPositionId ? (
+        <Empty text="Não foi encontrada a posição de estoque não organizado." />
+      ) : carregando ? (
+        <p className="cart-empty">Carregando…</p>
+      ) : !item ? (
+        itens.length ? (
+          <div className="cart">
+            {itens.map((i) => (
+              <button key={i.id} className="cart-row" style={{ gridTemplateColumns: "1fr auto", width: "100%", textAlign: "left" }} onClick={() => escolher(i)}>
+                <span>
+                  <b>{i.code}</b>
+                  <small>{i.name}</small>
+                </span>
+                <b>
+                  {fmt(i.quantity)} {i.unit}
+                </b>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <Empty text="Não há produtos aguardando organização." />
+        )
+      ) : (
+        <>
+          <div className="cart" style={{ marginBottom: 14 }}>
+            <div className="cart-row" style={{ gridTemplateColumns: "1fr 32px" }}>
+              <span>
+                <b>{item.code}</b>
+                <small>
+                  {item.name} · disponível {fmt(item.quantity)} {item.unit}
+                </small>
+              </span>
+              <button onClick={() => setItem(null)}>×</button>
+            </div>
+          </div>
+          <PosicaoSeletor mapa={mapa} value={toPositionId} onChange={setToPositionId} excludeId={holdingPositionId} label="Posição de destino" />
+          <div className="form-grid">
+            <Field label="Quantidade *">
+              <input type="number" min="0.01" max={item.quantity} step="1" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+            </Field>
+            <Field label="Responsável *">
+              <input value={responsible} onChange={(e) => setResponsible(e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Motivo *">
+            <input value={reason} onChange={(e) => setReason(e.target.value)} />
+          </Field>
+          {err && <div className="error">{err}</div>}
+          <div className="modal-actions">
+            <button className="secondary" onClick={() => setItem(null)}>
+              Voltar
+            </button>
+            <button className="primary" disabled={saving} onClick={salvar}>
+              {saving ? "Organizando…" : "Confirmar"}
+            </button>
+          </div>
+        </>
+      )}
+      {!item && (
+        <div className="modal-actions">
+          <button className="secondary" onClick={onClose}>
+            Fechar
+          </button>
+        </div>
+      )}
     </Modal>
   );
 }

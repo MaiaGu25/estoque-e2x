@@ -110,10 +110,14 @@ router.delete("/andares/:id", requireAdmin, (req, res) => {
 });
 
 // Busca por produto (destaca posições onde ele está guardado) ou por
-// código/nome de posição direto.
+// código/nome de posição direto. Sem termo nenhum, devolve uma lista
+// padrão de posições pra aparecer como lista suspensa em vez de vazio.
 router.get("/buscar", (req, res) => {
   const q = String(req.query.q || "").trim();
-  if (!q) return res.json({ porProduto: [], posicoes: [] });
+  if (!q) {
+    const posicoes = db.prepare(`SELECT id, code, name FROM logistics_positions ORDER BY code LIMIT 20`).all();
+    return res.json({ porProduto: [], posicoes });
+  }
   const like = `%${q}%`;
 
   const porProduto = db
