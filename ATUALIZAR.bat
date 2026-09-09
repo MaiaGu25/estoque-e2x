@@ -7,10 +7,21 @@ echo ==========================================
 echo       ESTOQUE E2X - ATUALIZACAO
 echo ==========================================
 echo.
-echo Se a janela do INICIAR_ESTOQUE.bat estiver aberta, feche-a antes de
-echo continuar.
-echo.
-pause
+
+:VERIFICAR_SISTEMA_RODANDO
+netstat -ano | findstr ":3000" | findstr "LISTENING" >nul 2>nul
+if not errorlevel 1 (
+  echo O sistema ainda esta rodando nesta janela do INICIAR_ESTOQUE.bat.
+  echo.
+  echo Feche essa janela AGORA. Isso e importante: se ela continuar
+  echo aberta, o programa antigo fica rodando na memoria mesmo depois
+  echo dos arquivos serem atualizados no disco, e a atualizacao nao
+  echo entra em vigor direito.
+  echo.
+  echo Depois de fechar, pressione uma tecla aqui para continuar.
+  pause >nul
+  goto VERIFICAR_SISTEMA_RODANDO
+)
 
 where git >nul 2>nul
 if errorlevel 1 (
