@@ -4,6 +4,7 @@ const { requireAdmin } = require("../../auth");
 const { nowStamp } = require("../../util");
 const { broadcast } = require("../../realtime");
 const { registrarAuditoria } = require("../../lib/logisticaAudit");
+const { registrarEntradaTx, buscarPosicaoDeRecebimento } = require("../../lib/logisticaMovimentos");
 
 const router = express.Router();
 
@@ -112,8 +113,11 @@ router.post("/", (req, res) => {
   const code = String(b.code || "").trim();
   const name = String(b.name || "").trim();
   if (!code || !name) return res.status(400).json({ error: "Código e nome são obrigatórios." });
+  const initialQuantity = Number(b.initialQuantity) || 0;
+  if (initialQuantity < 0) return res.status(400).json({ error: "A quantidade inicial não pode ser negativa." });
 
   const now = nowStamp();
+  let productId;
   try {
     const result = db
       .prepare(
@@ -133,18 +137,41 @@ router.post("/", (req, res) => {
         req.user.id,
         now
       );
+    productId = result.lastInsertRowid;
     registrarAuditoria({
       action: "produto.criar",
       entityType: "logistics_products",
-      entityId: result.lastInsertRowid,
+      entityId: productId,
       user: req.user,
       newData: { code, name },
     });
-    broadcast("logistica");
-    res.json({ ok: true, id: result.lastInsertRowid });
   } catch (error) {
-    res.status(400).json({ error: "Já existe um produto com esse código." });
+    return res.status(400).json({ error: "Já existe um produto com esse código." });
   }
+
+  // Quantidade física informada no cadastro entra como uma ENTRADA normal
+  // na posição "Estoque não organizado" - o usuário decide depois, com uma
+  // transferência, em qual posição real ela vai ficar.
+  if (initialQuantity > 0) {
+    const recebimento = buscarPosicaoDeRecebimento();
+    if (recebimento) {
+      try {
+        registrarEntradaTx(
+          { productId, positionId: recebimento.id, quantity: initialQuantity, reason: "Cadastro inicial de estoque", responsible: req.user.name },
+          req.user
+        );
+      } catch (error) {
+        return res.json({
+          ok: true,
+          id: productId,
+          warning: error instanceof Error ? error.message : "Produto criado, mas não foi possível registrar a quantidade inicial.",
+        });
+      }
+    }
+  }
+
+  broadcast("logistica");
+  res.json({ ok: true, id: productId });
 });
 
 router.patch("/:id", requireAdmin, (req, res) => {

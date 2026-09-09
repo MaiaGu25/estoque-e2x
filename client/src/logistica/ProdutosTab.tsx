@@ -135,7 +135,7 @@ export default function ProdutosTab({
 }
 
 function NovoProdutoModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [v, setV] = useState({ code: "", name: "", description: "", category: "", unit: "UN", minimumStock: 0, notes: "" });
+  const [v, setV] = useState({ code: "", name: "", description: "", category: "", unit: "UN", minimumStock: 0, notes: "", initialQuantity: 0 });
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -144,7 +144,8 @@ function NovoProdutoModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     setSaving(true);
     setErr("");
     try {
-      await api.post("/api/logistica/produtos", v);
+      const r = await api.post<{ ok: true; id: number; warning?: string }>("/api/logistica/produtos", v);
+      if (r.warning) console.warn(r.warning);
       onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Não foi possível cadastrar o produto.");
@@ -171,7 +172,15 @@ function NovoProdutoModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         <Field label="Estoque mínimo">
           <input type="number" min="0" value={v.minimumStock} onChange={(e) => setV({ ...v, minimumStock: Number(e.target.value) })} />
         </Field>
+        <Field label="Quantidade encontrada no físico (opcional)">
+          <input type="number" min="0" value={v.initialQuantity} onChange={(e) => setV({ ...v, initialQuantity: Number(e.target.value) })} />
+        </Field>
       </div>
+      {v.initialQuantity > 0 && (
+        <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: "0 0 14px", fontSize: 12 }}>
+          Essas {v.initialQuantity} unidades entram como estoque em "Estoque não organizado" - depois é só transferir para a posição certa no mapa.
+        </p>
+      )}
       <Field label="Descrição">
         <textarea value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} />
       </Field>

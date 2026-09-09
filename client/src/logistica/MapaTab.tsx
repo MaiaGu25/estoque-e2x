@@ -64,6 +64,7 @@ function ocupacaoRack(rack: LogMontante) {
 export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa; isAdmin: boolean; onAtualizado: () => void }) {
   const [editMode, setEditMode] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
   const [selectedRackId, setSelectedRackId] = useState<number | null>(null);
   const [selectedPositionId, setSelectedPositionId] = useState<number | null>(null);
   const [detalhe, setDetalhe] = useState<PosicaoDetalhe | null>(null);
@@ -72,12 +73,22 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
   const [override, setOverride] = useState<(Retangulo & { rackId: number }) | null>(null);
   const [modalMontante, setModalMontante] = useState(false);
   const [modalLado, setModalLado] = useState<null | { rackId: number; lado?: any }>(null);
+  const [modalAndar, setModalAndar] = useState<null | "novo" | "editar">(null);
   const [panelError, setPanelError] = useState("");
 
   const dragRef = useRef<DragInfo | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   const selectedRack = mapa.racks.find((r) => r.id === selectedRackId) || null;
+  const selectedFloor = mapa.floors.find((f) => f.id === selectedFloorId) || null;
+  const racksDoAndar = mapa.racks.filter((r) => r.floor_id === selectedFloorId && !r.is_holding_area);
+
+  useEffect(() => {
+    if (!mapa.floors.length) return;
+    if (!selectedFloorId || !mapa.floors.some((f) => f.id === selectedFloorId)) {
+      setSelectedFloorId(mapa.floors.find((f) => f.active)?.id ?? mapa.floors[0].id);
+    }
+  }, [mapa.floors, selectedFloorId]);
 
   useEffect(() => {
     if (!selectedPositionId) {
@@ -125,6 +136,8 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
 
   const abrirResultado = (posId: number) => {
     const rackId = posicaoParaRack[posId];
+    const rack = mapa.racks.find((r) => r.id === rackId);
+    if (rack) setSelectedFloorId(rack.floor_id);
     setSelectedRackId(rackId ?? null);
     setSelectedPositionId(posId);
     setQuery("");
@@ -273,6 +286,37 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
         <button className="secondary" onClick={centralizar}>
           <LocateFixed size={15} /> Centralizar
         </button>
+        {mapa.floors.length > 0 && (
+          <select
+            value={selectedFloorId ?? ""}
+            onChange={(e) => {
+              setSelectedFloorId(Number(e.target.value) || null);
+              selecionarRack(null);
+            }}
+            style={{ height: 38 }}
+          >
+            {mapa.floors
+              .filter((f) => f.active || isAdmin)
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.active ? "" : "(inativo) "}
+                  {f.name} ({f.code})
+                </option>
+              ))}
+          </select>
+        )}
+        {editMode && isAdmin && (
+          <>
+            <button className="secondary" onClick={() => setModalAndar("novo")}>
+              <Plus size={15} /> Andar
+            </button>
+            {selectedFloor && (
+              <button className="icon-btn" title="Editar andar" onClick={() => setModalAndar("editar")}>
+                <Pencil size={16} />
+              </button>
+            )}
+          </>
+        )}
         {isAdmin && (
           <div className="segmented" style={{ maxWidth: 260, margin: 0 }}>
             <button className={!editMode ? "active in" : ""} onClick={() => setEditMode(false)}>
@@ -298,10 +342,10 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
               style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${zoom})` }}
               onClick={() => selecionarRack(null)}
             >
-              {!mapa.racks.length && (
-                <div className="warehouse-empty-hint">O mapa ainda não tem nenhum montante. Crie um para começar a desenhar o galpão.</div>
+              {!racksDoAndar.length && (
+                <div className="warehouse-empty-hint">Esse andar ainda não tem nenhum montante. Crie um para começar a desenhar o galpão.</div>
               )}
-              {mapa.racks.map((rack) => {
+              {racksDoAndar.map((rack) => {
                 const rect = override?.rackId === rack.id ? override : rack;
                 const ocupado = ocupacaoRack(rack) > 0;
                 const selecionado = rack.id === selectedRackId;
@@ -362,6 +406,7 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
           ) : selectedRack ? (
             <MontanteDetalhePainel
               rack={selectedRack}
+              floors={mapa.floors}
               isAdmin={isAdmin}
               editMode={editMode}
               onPatchRack={(patch) => patchRack(selectedRack.id, patch)}
@@ -376,8 +421,9 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
         </div>
       </div>
 
-      {modalMontante && (
+      {modalMontante && selectedFloorId && (
         <MontanteModal
+          floorId={selectedFloorId}
           onClose={() => setModalMontante(false)}
           onCreated={(id) => {
             setModalMontante(false);
@@ -393,6 +439,25 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
           onClose={() => setModalLado(null)}
           onSaved={() => {
             setModalLado(null);
+            onAtualizado();
+          }}
+        />
+      )}
+      {modalAndar === "novo" && (
+        <AndarModal
+          onClose={() => setModalAndar(null)}
+          onSaved={() => {
+            setModalAndar(null);
+            onAtualizado();
+          }}
+        />
+      )}
+      {modalAndar === "editar" && selectedFloor && (
+        <AndarModal
+          andar={selectedFloor}
+          onClose={() => setModalAndar(null)}
+          onSaved={() => {
+            setModalAndar(null);
             onAtualizado();
           }}
         />
@@ -433,6 +498,7 @@ function BuscaPainel({ busca, onSelecionar }: { busca: BuscaResultado; onSelecio
 
 function MontanteDetalhePainel({
   rack,
+  floors,
   isAdmin,
   editMode,
   onPatchRack,
@@ -442,6 +508,7 @@ function MontanteDetalhePainel({
   onSelectPosition,
 }: {
   rack: LogMontante;
+  floors: { id: number; code: string; name: string; active: number }[];
   isAdmin: boolean;
   editMode: boolean;
   onPatchRack: (patch: Record<string, unknown>) => void;
@@ -460,7 +527,7 @@ function MontanteDetalhePainel({
     setGeo({ x: rack.x, y: rack.y, width: rack.width, height: rack.height });
   }, [rack.id, rack.name, rack.color, rack.x, rack.y, rack.width, rack.height]);
 
-  const podeEditar = isAdmin && editMode;
+  const podeEditar = isAdmin && editMode && !rack.is_holding_area;
 
   return (
     <div>
@@ -472,6 +539,12 @@ function MontanteDetalhePainel({
           <p style={{ margin: "6px 0 0", fontSize: 12, color: "#7b8e85" }}>{rack.name}</p>
         </div>
       </div>
+
+      {rack.is_holding_area && (
+        <div className="error" style={{ background: "#fff8e6", color: "#8a6300", borderColor: "#ffe8a3" }}>
+          Esse é o estoque de recebimento usado pelo cadastro de produtos com quantidade inicial - não aparece desenhado no mapa e não pode ser editado ou excluído.
+        </div>
+      )}
 
       <div className="detail-meta">
         <div>
@@ -486,6 +559,15 @@ function MontanteDetalhePainel({
 
       {podeEditar && (
         <div style={{ marginBottom: 14 }}>
+          <Field label="Andar">
+            <select value={rack.floor_id} onChange={(e) => onPatchRack({ floorId: Number(e.target.value) })}>
+              {floors.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name} ({f.code})
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="Nome">
             <div style={{ display: "flex", gap: 8 }}>
               <input value={nome} onChange={(e) => setNome(e.target.value)} />
@@ -704,7 +786,7 @@ function PosicaoDetalhePainel({
   );
 }
 
-function MontanteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: number) => void }) {
+function MontanteModal({ floorId, onClose, onCreated }: { floorId: number; onClose: () => void; onCreated: (id: number) => void }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [color, setColor] = useState("");
@@ -715,7 +797,16 @@ function MontanteModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     setSaving(true);
     setErr("");
     try {
-      const r = await api.post<{ ok: true; id: number }>("/api/logistica/mapa/montantes", { code, name, color, x: 20, y: 20, width: 140, height: 90 });
+      const r = await api.post<{ ok: true; id: number }>("/api/logistica/mapa/montantes", {
+        floorId,
+        code,
+        name,
+        color,
+        x: 20,
+        y: 20,
+        width: 140,
+        height: 90,
+      });
       onCreated(r.id);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Não foi possível criar o montante.");
@@ -827,6 +918,79 @@ function LadoModal({
         <div className="error" style={{ background: "#fff8e6", color: "#8a6300", borderColor: "#ffe8a3" }}>
           Reduzir as prateleiras só funciona se as removidas estiverem vazias e sem histórico.
         </div>
+      )}
+      {err && <div className="error">{err}</div>}
+      <div className="modal-actions">
+        {editando && (
+          <button className="secondary" onClick={excluir} disabled={saving} style={{ marginRight: "auto", color: "#b64a3c" }}>
+            <Trash2 size={15} /> Excluir
+          </button>
+        )}
+        <button className="secondary" onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="primary" disabled={saving || !name.trim() || (!editando && !code.trim())} onClick={salvar}>
+          {saving ? "Salvando…" : "Salvar"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function AndarModal({ andar, onClose, onSaved }: { andar?: any; onClose: () => void; onSaved: () => void }) {
+  const editando = !!andar;
+  const [code, setCode] = useState(andar?.code || "");
+  const [name, setName] = useState(andar?.name || "");
+  const [active, setActive] = useState(andar ? !!andar.active : true);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const salvar = async () => {
+    setSaving(true);
+    setErr("");
+    try {
+      if (editando) {
+        await api.patch(`/api/logistica/mapa/andares/${andar.id}`, { name, active });
+      } else {
+        await api.post("/api/logistica/mapa/andares", { code, name });
+      }
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível salvar o andar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const excluir = async () => {
+    if (!confirm(`Excluir o andar ${andar.name}? Só é possível se ele não tiver nenhum montante.`)) return;
+    setSaving(true);
+    setErr("");
+    try {
+      await api.del(`/api/logistica/mapa/andares/${andar.id}`);
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível excluir o andar.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={editando ? "Editar andar" : "Novo andar"} onClose={onClose}>
+      <div className="form-grid">
+        {!editando && (
+          <Field label="Código *">
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Ex.: 2" />
+          </Field>
+        )}
+        <Field label="Nome *">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Andar 2" />
+        </Field>
+      </div>
+      {editando && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 14 }}>
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Andar ativo
+        </label>
       )}
       {err && <div className="error">{err}</div>}
       <div className="modal-actions">

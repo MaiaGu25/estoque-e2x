@@ -12,7 +12,7 @@ import MovimentacoesTab from "./MovimentacoesTab";
 import HistoricoTab from "./HistoricoTab";
 import MapaTab from "./MapaTab";
 
-const empty: LogMapa = { racks: [] };
+const empty: LogMapa = { floors: [], racks: [] };
 
 export default function LogisticaApp({ user, onLogout, onHome }: { user: User; onLogout: () => void; onHome: () => void }) {
   const isAdmin = user.role === "admin";

@@ -44,6 +44,7 @@ export function PosicaoSeletor({
             .filter((r) => r.active)
             .map((r) => (
               <option key={r.id} value={r.id}>
+                {r.is_holding_area ? "📦 " : ""}
                 {r.name} ({r.code})
               </option>
             ))}

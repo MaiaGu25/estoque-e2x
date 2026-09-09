@@ -296,7 +296,21 @@ CREATE TABLE IF NOT EXISTS logistics_products (
   updated_at TEXT NOT NULL
 );
 
--- Hierarquia física: montante (desenhado livremente no mapa do galpão) ->
+-- Prédio pode ter mais de um andar; cada andar tem seu próprio mapa (os
+-- montantes de um andar não aparecem nem se misturam com os de outro).
+CREATE TABLE IF NOT EXISTS logistics_floors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+
+-- Hierarquia física: andar -> montante (desenhado livremente no mapa) ->
 -- lado -> prateleira (a posição de armazenagem em si). Um galpão só por
 -- enquanto: se um dia precisar de mais de um galpão, dá pra adicionar uma
 -- tabela logistics_warehouses e uma coluna warehouse_id aqui em cima sem
@@ -306,8 +320,13 @@ CREATE TABLE IF NOT EXISTS logistics_products (
 -- efeito de girar já fica embutido em width/height (largura e altura são
 -- sempre o tamanho já "rotacionado" que aparece na tela) - a coluna existe
 -- para lembrar a orientação original e for útil no futuro.
+-- is_holding_area marca o único montante especial "Estoque não organizado"
+-- (criado automaticamente) usado para guardar produto recém-cadastrado
+-- antes de ser organizado numa posição de verdade - ele nunca aparece
+-- desenhado no mapa.
 CREATE TABLE IF NOT EXISTS logistics_racks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  floor_id INTEGER NOT NULL REFERENCES logistics_floors(id),
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   x REAL NOT NULL DEFAULT 20,
@@ -317,6 +336,7 @@ CREATE TABLE IF NOT EXISTS logistics_racks (
   rotation INTEGER NOT NULL DEFAULT 0 CHECK(rotation IN (0, 90, 180, 270)),
   color TEXT NOT NULL DEFAULT '',
   active INTEGER NOT NULL DEFAULT 1,
+  is_holding_area INTEGER NOT NULL DEFAULT 0,
   created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL,
   updated_by INTEGER REFERENCES users(id),
@@ -492,6 +512,60 @@ if (reservedMovementsInfo && reservedMovementsInfo.sql.includes("'RESERVAR','LIB
   db.exec("CREATE INDEX IF NOT EXISTS idx_reserved_movements_part ON reserved_movements(part_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_reserved_movements_created_at ON reserved_movements(created_at)");
 }
+
+// logistics_racks existia sem andar (galpão de um andar só); bancos criados
+// antes disso ganham a coluna e um andar padrão pra não perder nenhum
+// montante já cadastrado. floor_id fica sem NOT NULL no schema porque o
+// SQLite não permite adicionar coluna NOT NULL sem um valor padrão fixo
+// (o id do andar padrão só existe depois de criado) - a rota de criação de
+// montante sempre exige o andar, então isso nunca fica vazio na prática.
+if (!columnExists("logistics_racks", "floor_id")) {
+  db.exec("ALTER TABLE logistics_racks ADD COLUMN floor_id INTEGER REFERENCES logistics_floors(id)");
+}
+if (!columnExists("logistics_racks", "is_holding_area")) {
+  db.exec("ALTER TABLE logistics_racks ADD COLUMN is_holding_area INTEGER NOT NULL DEFAULT 0");
+}
+
+let andarPadrao = db.prepare("SELECT id FROM logistics_floors ORDER BY display_order, id LIMIT 1").get();
+if (!andarPadrao) {
+  const now = nowStamp();
+  const result = db
+    .prepare("INSERT INTO logistics_floors (code,name,display_order,active,created_at,updated_at) VALUES ('1','Andar 1',0,1,?,?)")
+    .run(now, now);
+  andarPadrao = { id: result.lastInsertRowid };
+}
+db.prepare("UPDATE logistics_racks SET floor_id = ? WHERE floor_id IS NULL").run(andarPadrao.id);
+
+// "Estoque não organizado": posição especial pra receber produto recém-
+// cadastrado já com uma quantidade física informada, antes de decidir em
+// qual posição real ele vai ficar (o usuário organiza depois com uma
+// transferência normal). Criada uma única vez; nunca aparece desenhada no
+// mapa (is_holding_area).
+const areaNaoOrganizada = db.prepare("SELECT id FROM logistics_racks WHERE is_holding_area = 1").get();
+if (!areaNaoOrganizada) {
+  const now = nowStamp();
+  const rack = db
+    .prepare(
+      `INSERT INTO logistics_racks (floor_id,code,name,x,y,width,height,rotation,color,active,is_holding_area,created_at,updated_at)
+       VALUES (?,'ESTOQUE-INICIAL','Estoque não organizado',0,0,1,1,0,'',1,1,?,?)`
+    )
+    .run(andarPadrao.id, now, now);
+  const side = db
+    .prepare(
+      `INSERT INTO logistics_rack_sides (rack_id,code,name,shelves_count,display_order,active,created_at,updated_at)
+       VALUES (?,'A','Recebimento',1,0,1,?,?)`
+    )
+    .run(rack.lastInsertRowid, now, now);
+  db.prepare(
+    `INSERT INTO logistics_positions (rack_id,side_id,shelf_number,code,name,active,blocked,created_at,updated_at)
+     VALUES (?,?,1,'ESTOQUE-INICIAL-A-P001','Recebimento',1,0,?,?)`
+  ).run(rack.lastInsertRowid, side.lastInsertRowid, now, now);
+}
+
+// Criado aqui (não junto com os outros índices lá em cima) porque numa
+// atualização a partir do schema sem andares a coluna floor_id só passa a
+// existir depois do ALTER TABLE logo acima.
+db.exec("CREATE INDEX IF NOT EXISTS idx_logistics_racks_floor ON logistics_racks(floor_id)");
 
 function getMeta(key) {
   const row = db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key);
