@@ -50,10 +50,18 @@ router.get("/categorias", (req, res) => {
 });
 
 // Autocomplete rápido para os seletores de produto (movimentações, ajuste,
-// busca do mapa). Prioriza: código exato > começa com > contém.
+// busca do mapa). Prioriza: código exato > começa com > contém. Sem termo
+// nenhum (campo só clicado, ainda vazio), devolve uma lista padrão pra
+// aparecer como lista suspensa em vez de ficar em branco.
 router.get("/busca", (req, res) => {
   const q = String(req.query.q || "").trim();
-  if (!q) return res.json({ produtos: [] });
+  if (!q) {
+    const produtos = db
+      .prepare(`SELECT p.*, ${SALDO_SUBQUERY} AS saldo_total FROM logistics_products p WHERE p.active = 1 ORDER BY p.name COLLATE NOCASE LIMIT 20`)
+      .all()
+      .map((p) => ({ ...p, situacao: situacao(p) }));
+    return res.json({ produtos });
+  }
   const like = `%${q}%`;
   const startsWith = `${q}%`;
   const produtos = db
@@ -67,7 +75,7 @@ router.get("/busca", (req, res) => {
               WHEN p.name LIKE ? THEN 2
               ELSE 3 END,
          p.name COLLATE NOCASE
-       LIMIT 8`
+       LIMIT 20`
     )
     .all(like, like, like, q, startsWith, startsWith)
     .map((p) => ({ ...p, situacao: situacao(p) }));
