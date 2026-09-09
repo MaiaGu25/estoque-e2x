@@ -11,11 +11,12 @@ function proximoCodigo(prefixo, existentes) {
   return `${prefixo}${String(max + 1).padStart(2, "0")}`;
 }
 
-// Identificador final e imutável de uma posição de armazenagem, ex.:
-// F01-C02-M05-N03. Gerado uma vez na criação e nunca recalculado depois,
-// mesmo que o nome amigável (name) do montante/corredor/fileira mude.
-function codigoPosicao(rowCode, aisleCode, rackCode, levelNumber) {
-  return `${rowCode}-${aisleCode}-${rackCode}-N${String(levelNumber).padStart(2, "0")}`;
+// Identificador final e imutável de uma posição de armazenagem (uma
+// prateleira de um lado de um montante), ex.: F01-C02-M05-A-P003. Gerado
+// uma vez na criação e nunca recalculado depois, mesmo que o nome amigável
+// (name) do montante/corredor/fileira/lado mude.
+function codigoPosicao(rowCode, aisleCode, rackCode, sideCode, shelfNumber) {
+  return `${rowCode}-${aisleCode}-${rackCode}-${sideCode}-P${String(shelfNumber).padStart(3, "0")}`;
 }
 
 module.exports = { proximoCodigo, codigoPosicao };
