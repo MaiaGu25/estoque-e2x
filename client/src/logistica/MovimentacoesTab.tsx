@@ -42,9 +42,9 @@ export default function MovimentacoesTab({ mapa, onRegistrado, usuario }: { mapa
 
       {modal === "chegada" && <ChegadaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
       {modal === "entrada" && <EntradaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
-      {modal === "saida" && <SaidaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
+      {modal === "saida" && <SaidaModal usuario={usuario} onClose={fechar} onSaved={salvo} />}
       {modal === "transferencia" && <TransferenciaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
-      {modal === "ajuste" && <AjusteModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
+      {modal === "ajuste" && <AjusteModal usuario={usuario} onClose={fechar} onSaved={salvo} />}
       {modal === "organizar" && <OrganizarModal mapa={mapa} usuario={usuario} onClose={fechar} onRegistrado={onRegistrado} />}
     </section>
   );
@@ -214,9 +214,78 @@ function EntradaModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usua
   );
 }
 
-function SaidaModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuario: User; onClose: () => void; onSaved: () => void }) {
+type PosicaoEstoque = {
+  position_id: number;
+  position_code: string;
+  position_name: string;
+  side_code: string;
+  side_name: string;
+  rack_name: string;
+  quantity: number;
+};
+
+// Mostra só onde o produto já está guardado (com o saldo de cada posição),
+// pra escolher clicando - sem precisar saber de cor os códigos de montante,
+// lado e prateleira. Se só tem um lugar, já seleciona sozinho.
+function LocalizacaoAtual({
+  produtoId,
+  selecionadaId,
+  onSelecionar,
+  vazio,
+}: {
+  produtoId: number;
+  selecionadaId: number | null;
+  onSelecionar: (p: PosicaoEstoque) => void;
+  vazio: string;
+}) {
+  const [posicoes, setPosicoes] = useState<PosicaoEstoque[] | null>(null);
+
+  useEffect(() => {
+    setPosicoes(null);
+    api.get<{ posicoes: PosicaoEstoque[] }>(`/api/logistica/produtos/${produtoId}`).then((r) => {
+      setPosicoes(r.posicoes);
+      if (r.posicoes.length === 1) onSelecionar(r.posicoes[0]);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [produtoId]);
+
+  if (posicoes === null) return <p className="cart-empty">Carregando localização…</p>;
+  if (!posicoes.length) return <Empty text={vazio} />;
+
+  return (
+    <div className="cart">
+      {posicoes.map((p) => (
+        <button
+          key={p.position_id}
+          className="cart-row"
+          style={{
+            gridTemplateColumns: "1fr auto",
+            width: "100%",
+            textAlign: "left",
+            background: selecionadaId === p.position_id ? "#edf8f2" : undefined,
+          }}
+          onClick={() => onSelecionar(p)}
+        >
+          <span>
+            <b>
+              {p.rack_name} · {p.side_name} ({p.side_code})
+            </b>
+            <small>
+              {p.position_code}
+              {p.position_name ? ` - ${p.position_name}` : ""}
+            </small>
+          </span>
+          <b>{fmt(p.quantity)}</b>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SaidaModal({ usuario, onClose, onSaved }: { usuario: User; onClose: () => void; onSaved: () => void }) {
   const [produto, setProduto] = useState<LogProduto | null>(null);
   const [positionId, setPositionId] = useState<number | null>(null);
+  const [maxQuantity, setMaxQuantity] = useState<number | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [reason, setReason] = useState("");
   const [responsible, setResponsible] = useState(usuario.name);
@@ -224,9 +293,24 @@ function SaidaModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuari
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const escolherProduto = (p: LogProduto) => {
+    setProduto(p);
+    setPositionId(null);
+    setMaxQuantity(null);
+  };
+
+  const escolherPosicao = (p: PosicaoEstoque) => {
+    setPositionId(p.position_id);
+    setMaxQuantity(p.quantity);
+    setQuantity((q) => Math.min(q, p.quantity) || 1);
+  };
+
   const salvar = async () => {
     if (!produto || !positionId || !reason.trim() || !responsible.trim() || quantity <= 0) {
       return setErr("Preencha produto, posição, quantidade, motivo e responsável.");
+    }
+    if (maxQuantity !== null && quantity > maxQuantity) {
+      return setErr("A quantidade não pode ser maior do que a disponível nessa posição.");
     }
     setSaving(true);
     setErr("");
@@ -244,17 +328,36 @@ function SaidaModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuari
     <Modal title="Saída" subtitle="Registre a retirada de um produto de uma posição do galpão." onClose={onClose}>
       {!produto ? (
         <Field label="Produto *">
-          <ProdutoBusca onSelect={setProduto} />
+          <ProdutoBusca onSelect={escolherProduto} />
         </Field>
       ) : (
         <div className="cart" style={{ marginBottom: 14 }}>
           <ProdutoSelecionado produto={produto} onLimpar={() => setProduto(null)} />
         </div>
       )}
-      <PosicaoSeletor mapa={mapa} value={positionId} onChange={setPositionId} label="Posição de origem" />
-      <div className="form-grid">
+      {produto && (
+        <>
+          <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: "0 0 6px" }}>
+            Onde está guardado
+          </p>
+          <LocalizacaoAtual
+            produtoId={produto.id}
+            selecionadaId={positionId}
+            onSelecionar={escolherPosicao}
+            vazio="Este produto não está guardado em nenhuma posição ainda."
+          />
+        </>
+      )}
+      <div className="form-grid" style={{ marginTop: 14 }}>
         <Field label="Quantidade *">
-          <input type="number" min="0.01" step="1" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+          <input
+            type="number"
+            min="0.01"
+            max={maxQuantity ?? undefined}
+            step="1"
+            value={quantity}
+            onChange={(e) => setQuantity(Number(e.target.value))}
+          />
         </Field>
         <Field label="Responsável *">
           <input value={responsible} onChange={(e) => setResponsible(e.target.value)} />
@@ -271,7 +374,7 @@ function SaidaModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuari
         <button className="secondary" onClick={onClose}>
           Cancelar
         </button>
-        <button className="primary" disabled={saving} onClick={salvar}>
+        <button className="primary" disabled={saving || !positionId} onClick={salvar}>
           {saving ? "Registrando…" : "Confirmar saída"}
         </button>
       </div>
@@ -361,7 +464,7 @@ function TransferenciaModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa
   );
 }
 
-function AjusteModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuario: User; onClose: () => void; onSaved: () => void }) {
+function AjusteModal({ usuario, onClose, onSaved }: { usuario: User; onClose: () => void; onSaved: () => void }) {
   const [produto, setProduto] = useState<LogProduto | null>(null);
   const [positionId, setPositionId] = useState<number | null>(null);
   const [saldoAtual, setSaldoAtual] = useState<number | null>(null);
@@ -372,20 +475,17 @@ function AjusteModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuar
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!produto || !positionId) {
-      setSaldoAtual(null);
-      return;
-    }
-    api
-      .get<{ posicoes: { position_id: number; quantity: number }[] }>(`/api/logistica/produtos/${produto.id}`)
-      .then((r) => {
-        const pos = r.posicoes.find((p) => p.position_id === positionId);
-        setSaldoAtual(pos ? pos.quantity : 0);
-        setQuantidadeFisica(pos ? pos.quantity : 0);
-      })
-      .catch(() => setSaldoAtual(null));
-  }, [produto, positionId]);
+  const escolherProduto = (p: LogProduto) => {
+    setProduto(p);
+    setPositionId(null);
+    setSaldoAtual(null);
+  };
+
+  const escolherPosicao = (p: PosicaoEstoque) => {
+    setPositionId(p.position_id);
+    setSaldoAtual(p.quantity);
+    setQuantidadeFisica(p.quantity);
+  };
 
   const diferenca = saldoAtual !== null ? quantidadeFisica - saldoAtual : null;
 
@@ -410,14 +510,26 @@ function AjusteModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuar
     <Modal title="Ajuste de inventário" subtitle="Informe a quantidade física encontrada numa posição." onClose={onClose}>
       {!produto ? (
         <Field label="Produto *">
-          <ProdutoBusca onSelect={setProduto} />
+          <ProdutoBusca onSelect={escolherProduto} />
         </Field>
       ) : (
         <div className="cart" style={{ marginBottom: 14 }}>
           <ProdutoSelecionado produto={produto} onLimpar={() => setProduto(null)} />
         </div>
       )}
-      <PosicaoSeletor mapa={mapa} value={positionId} onChange={setPositionId} label="Posição a conferir" />
+      {produto && (
+        <>
+          <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: "0 0 6px" }}>
+            Onde está guardado
+          </p>
+          <LocalizacaoAtual
+            produtoId={produto.id}
+            selecionadaId={positionId}
+            onSelecionar={escolherPosicao}
+            vazio="Este produto não está guardado em nenhuma posição ainda."
+          />
+        </>
+      )}
 
       {positionId && saldoAtual !== null && (
         <div className="detail-meta" style={{ marginTop: 12 }}>
@@ -453,7 +565,7 @@ function AjusteModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuar
         <button className="secondary" onClick={onClose}>
           Cancelar
         </button>
-        <button className="primary" disabled={saving || diferenca === 0} onClick={salvar}>
+        <button className="primary" disabled={saving || !positionId || diferenca === 0} onClick={salvar}>
           {saving ? "Registrando…" : "Confirmar ajuste"}
         </button>
       </div>
