@@ -247,6 +247,161 @@ CREATE TABLE IF NOT EXISTS pecas_fornecedor_eventos (
 CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_status ON pecas_fornecedor(status);
 CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_created_at ON pecas_fornecedor(created_at);
 CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_eventos_peca ON pecas_fornecedor_eventos(peca_id);
+
+-- Módulo "Logística": estoque de galpão totalmente independente do Estoque
+-- geral (parts/movements/orders) - nenhuma tabela ou saldo é compartilhado.
+CREATE TABLE IF NOT EXISTS logistics_products (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT 'Geral',
+  unit TEXT NOT NULL DEFAULT 'UN',
+  minimum_stock REAL NOT NULL DEFAULT 0,
+  notes TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+
+-- Hierarquia física: fileira -> corredor -> montante -> nível (a posição
+-- de armazenagem em si). Um galpão só por enquanto: se um dia precisar de
+-- mais de um galpão, dá pra adicionar uma tabela logistics_warehouses e uma
+-- coluna warehouse_id aqui em cima sem quebrar nada do que já existe.
+CREATE TABLE IF NOT EXISTS logistics_rows (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS logistics_aisles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  row_id INTEGER NOT NULL REFERENCES logistics_rows(id),
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  display_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  UNIQUE(row_id, code)
+);
+
+CREATE TABLE IF NOT EXISTS logistics_racks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  aisle_id INTEGER NOT NULL REFERENCES logistics_aisles(id),
+  code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  levels_count INTEGER NOT NULL DEFAULT 4 CHECK(levels_count >= 1 AND levels_count <= 20),
+  color TEXT NOT NULL DEFAULT '',
+  display_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  UNIQUE(aisle_id, code)
+);
+
+-- Cada linha aqui é um "nível" de um montante, que é a posição de
+-- armazenagem final (ex.: F01-C02-M05-N03). O código é gerado a partir dos
+-- códigos dos pais e nunca muda depois de criado, mesmo se o nome (name)
+-- for renomeado - assim o histórico de movimentações nunca fica órfão.
+CREATE TABLE IF NOT EXISTS logistics_positions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rack_id INTEGER NOT NULL REFERENCES logistics_racks(id),
+  level_number INTEGER NOT NULL,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  blocked INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  UNIQUE(rack_id, level_number)
+);
+
+-- Saldo por produto em cada posição - a soma disso é o saldo total do
+-- produto (calculado, nunca guardado direto para não correr risco de
+-- ficar dessincronizado).
+CREATE TABLE IF NOT EXISTS logistics_position_stock (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  position_id INTEGER NOT NULL REFERENCES logistics_positions(id),
+  product_id INTEGER NOT NULL REFERENCES logistics_products(id),
+  quantity REAL NOT NULL DEFAULT 0 CHECK(quantity >= 0),
+  updated_at TEXT NOT NULL,
+  UNIQUE(position_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS logistics_operations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  number TEXT NOT NULL UNIQUE,
+  type TEXT NOT NULL CHECK(type IN ('ENTRADA','SAIDA','TRANSFERENCIA','AJUSTE')),
+  reason TEXT NOT NULL,
+  responsible TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+-- Uma linha por produto afetado dentro de uma operação. Cobre os 4 tipos:
+-- ENTRADA só preenche o lado "to", SAIDA só o lado "from", TRANSFERENCIA
+-- preenche os dois (uma única linha para toda a transferência, nunca duas
+-- linhas separadas), e AJUSTE usa from=to=a própria posição ajustada.
+CREATE TABLE IF NOT EXISTS logistics_movements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  operation_id INTEGER NOT NULL REFERENCES logistics_operations(id),
+  product_id INTEGER NOT NULL REFERENCES logistics_products(id),
+  quantity REAL NOT NULL,
+  from_position_id INTEGER REFERENCES logistics_positions(id),
+  to_position_id INTEGER REFERENCES logistics_positions(id),
+  previous_from_quantity REAL,
+  new_from_quantity REAL,
+  previous_to_quantity REAL,
+  new_to_quantity REAL,
+  previous_total_quantity REAL NOT NULL,
+  new_total_quantity REAL NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS logistics_audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER,
+  user_id INTEGER REFERENCES users(id),
+  user_name TEXT NOT NULL,
+  previous_data TEXT NOT NULL DEFAULT '',
+  new_data TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_logistics_products_active ON logistics_products(active);
+CREATE INDEX IF NOT EXISTS idx_logistics_aisles_row ON logistics_aisles(row_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_racks_aisle ON logistics_racks(aisle_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_positions_rack ON logistics_positions(rack_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_position_stock_position ON logistics_position_stock(position_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_position_stock_product ON logistics_position_stock(product_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_operations_created_at ON logistics_operations(created_at);
+CREATE INDEX IF NOT EXISTS idx_logistics_operations_type ON logistics_operations(type);
+CREATE INDEX IF NOT EXISTS idx_logistics_movements_operation ON logistics_movements(operation_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_movements_product ON logistics_movements(product_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_movements_created_at ON logistics_movements(created_at);
+CREATE INDEX IF NOT EXISTS idx_logistics_movements_from_position ON logistics_movements(from_position_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_movements_to_position ON logistics_movements(to_position_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_audit_entity ON logistics_audit_log(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_audit_created_at ON logistics_audit_log(created_at);
 `);
 
 function columnExists(table, column) {
