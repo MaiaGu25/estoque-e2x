@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
-import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, ChevronRight, ClipboardEdit, Inbox } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, ChevronRight, ClipboardEdit, Inbox, PackagePlus } from "lucide-react";
 import { api } from "../api";
 import type { LogMapa, LogProduto, User } from "../types";
 import { Empty, Field, fmt, Modal } from "./ui";
 import { PosicaoSeletor, ProdutoBusca } from "./PosicaoSeletor";
 
-type ModalTipo = null | "entrada" | "saida" | "transferencia" | "ajuste" | "organizar";
+type ModalTipo = null | "entrada" | "saida" | "transferencia" | "ajuste" | "organizar" | "chegada";
 
 export default function MovimentacoesTab({ mapa, onRegistrado, usuario }: { mapa: LogMapa; onRegistrado: () => void; usuario: User }) {
   const [modal, setModal] = useState<ModalTipo>(null);
 
   const acoes: { tipo: ModalTipo; titulo: string; descricao: string; icon: any; classe: string }[] = [
+    { tipo: "chegada", titulo: "Chegada de fornecedor", descricao: "Somar quantidade recebida de um produto que já existe", icon: PackagePlus, classe: "in" },
     { tipo: "entrada", titulo: "Entrada", descricao: "Registrar chegada de mercadoria numa posição", icon: ArrowDownToLine, classe: "in" },
     { tipo: "saida", titulo: "Saída", descricao: "Registrar retirada de mercadoria de uma posição", icon: ArrowUpFromLine, classe: "out" },
     { tipo: "transferencia", titulo: "Transferência", descricao: "Mover produto de uma posição para outra", icon: ArrowLeftRight, classe: "in" },
@@ -39,6 +40,7 @@ export default function MovimentacoesTab({ mapa, onRegistrado, usuario }: { mapa
         ))}
       </div>
 
+      {modal === "chegada" && <ChegadaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
       {modal === "entrada" && <EntradaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
       {modal === "saida" && <SaidaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
       {modal === "transferencia" && <TransferenciaModal mapa={mapa} usuario={usuario} onClose={fechar} onSaved={salvo} />}
@@ -59,6 +61,91 @@ function ProdutoSelecionado({ produto, onLimpar }: { produto: LogProduto; onLimp
       </span>
       <button onClick={onLimpar}>×</button>
     </div>
+  );
+}
+
+// Atalho pra quando chega mais de um produto que já existe no cadastro:
+// escolhe o produto, informa quanto chegou e pronto - entra direto no
+// "Estoque não organizado", igual à quantidade inicial do cadastro, pra
+// depois ser organizado no montante certo com o botão de Organizar.
+function ChegadaModal({ mapa, usuario, onClose, onSaved }: { mapa: LogMapa; usuario: User; onClose: () => void; onSaved: () => void }) {
+  const holdingPositionId = mapa.racks.find((r) => r.is_holding_area)?.sides[0]?.positions[0]?.id ?? null;
+
+  const [produto, setProduto] = useState<LogProduto | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [reason, setReason] = useState("Chegada de fornecedor");
+  const [responsible, setResponsible] = useState(usuario.name);
+  const [notes, setNotes] = useState("");
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const salvar = async () => {
+    if (!produto || !holdingPositionId || !reason.trim() || !responsible.trim() || quantity <= 0) {
+      return setErr("Escolha o produto, a quantidade, o motivo e o responsável.");
+    }
+    setSaving(true);
+    setErr("");
+    try {
+      await api.post("/api/logistica/movimentacoes/entrada", {
+        productId: produto.id,
+        positionId: holdingPositionId,
+        quantity,
+        reason,
+        responsible,
+        notes,
+      });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível registrar a chegada.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Chegada de fornecedor" subtitle="Some mais unidades a um produto que já está cadastrado." onClose={onClose}>
+      {!holdingPositionId ? (
+        <Empty text="Não foi encontrada a posição de estoque não organizado." />
+      ) : (
+        <>
+          {!produto ? (
+            <Field label="Produto *">
+              <ProdutoBusca onSelect={setProduto} />
+            </Field>
+          ) : (
+            <div className="cart" style={{ marginBottom: 14 }}>
+              <ProdutoSelecionado produto={produto} onLimpar={() => setProduto(null)} />
+            </div>
+          )}
+          <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: "0 0 14px" }}>
+            Entra em "Estoque não organizado" - depois é só usar o botão Organizar pra colocar no montante certo.
+          </p>
+          <div className="form-grid">
+            <Field label="Quantidade recebida *">
+              <input type="number" min="0.01" step="1" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+            </Field>
+            <Field label="Responsável *">
+              <input value={responsible} onChange={(e) => setResponsible(e.target.value)} />
+            </Field>
+          </div>
+          <Field label="Motivo *">
+            <input value={reason} onChange={(e) => setReason(e.target.value)} />
+          </Field>
+          <Field label="Observação">
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+          {err && <div className="error">{err}</div>}
+          <div className="modal-actions">
+            <button className="secondary" onClick={onClose}>
+              Cancelar
+            </button>
+            <button className="primary" disabled={saving} onClick={salvar}>
+              {saving ? "Registrando…" : "Confirmar chegada"}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 
