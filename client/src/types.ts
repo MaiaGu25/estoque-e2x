@@ -43,7 +43,7 @@ export type Movement = {
 export type ReservedMovement = {
   id: number;
   part_id: number;
-  type: "RESERVAR" | "LIBERAR";
+  type: "RESERVAR" | "LIBERAR" | "BAIXA";
   quantity: number;
   previous_reserved: number;
   new_reserved: number;

@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS movements (
 CREATE TABLE IF NOT EXISTS reserved_movements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   part_id INTEGER NOT NULL REFERENCES parts(id),
-  type TEXT NOT NULL CHECK(type IN ('RESERVAR','LIBERAR')),
+  type TEXT NOT NULL,
   quantity REAL NOT NULL,
   previous_reserved REAL NOT NULL,
   new_reserved REAL NOT NULL,
@@ -266,6 +266,41 @@ db.exec("CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_pedido ON pecas_fornece
 // parts existia sem saldo reservado; adiciona a coluna em bancos já criados.
 if (!columnExists("parts", "reserved_quantity")) {
   db.exec("ALTER TABLE parts ADD COLUMN reserved_quantity REAL NOT NULL DEFAULT 0");
+}
+
+// reserved_movements existia só com RESERVAR/LIBERAR; o tipo BAIXA (peça
+// reservada que efetivamente saiu do estoque) precisa de uma recriação da
+// tabela, já que o SQLite não altera CHECK de coluna existente. A validação
+// do tipo passa a ficar só na rota, então isso não deve se repetir.
+const reservedMovementsInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='reserved_movements'").get();
+if (reservedMovementsInfo && reservedMovementsInfo.sql.includes("'RESERVAR','LIBERAR'")) {
+  db.exec("BEGIN");
+  try {
+    db.exec(`
+      CREATE TABLE reserved_movements_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        part_id INTEGER NOT NULL REFERENCES parts(id),
+        type TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        previous_reserved REAL NOT NULL,
+        new_reserved REAL NOT NULL,
+        reason TEXT NOT NULL,
+        responsible TEXT NOT NULL,
+        notes TEXT NOT NULL DEFAULT '',
+        created_by INTEGER REFERENCES users(id),
+        created_at TEXT NOT NULL
+      );
+      INSERT INTO reserved_movements_new SELECT * FROM reserved_movements;
+      DROP TABLE reserved_movements;
+      ALTER TABLE reserved_movements_new RENAME TO reserved_movements;
+    `);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  db.exec("CREATE INDEX IF NOT EXISTS idx_reserved_movements_part ON reserved_movements(part_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_reserved_movements_created_at ON reserved_movements(created_at)");
 }
 
 function getMeta(key) {

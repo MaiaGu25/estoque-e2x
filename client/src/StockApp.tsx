@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, BarChart3, Bookmark, Boxes, ChevronRight,
-  ClipboardList, Download, History, LayoutDashboard, LogOut, Menu, PackagePlus,
+  ClipboardList, Download, History, LayoutDashboard, LogOut, Menu, PackageCheck, PackagePlus,
   Pencil, Plus, RefreshCw, Search, ShieldCheck, TriangleAlert, Users as UsersIcon, X,
 } from "lucide-react";
 import { api } from "./api";
@@ -34,6 +34,7 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
   const [search, setSearch] = useState("");
   const [mobile, setMobile] = useState(false);
   const [modal, setModal] = useState<null | "order" | "part" | "reserva">(null);
+  const [reservaTipoInicial, setReservaTipoInicial] = useState<"RESERVAR" | "LIBERAR" | "BAIXA">("RESERVAR");
   const [editingPart, setEditingPart] = useState<Part | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [from, setFrom] = useState("");
@@ -298,8 +299,14 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
             )}
             {tab === "reservados" && (
               <section>
-                <div className="action-grid">
-                  <button className="big-action in" onClick={() => setModal("reserva")}>
+                <div className="action-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+                  <button
+                    className="big-action in"
+                    onClick={() => {
+                      setReservaTipoInicial("RESERVAR");
+                      setModal("reserva");
+                    }}
+                  >
                     <Bookmark />
                     <span>
                       <b>Reservar peças</b>
@@ -307,11 +314,31 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
                     </span>
                     <ChevronRight />
                   </button>
-                  <button className="big-action out" onClick={() => setModal("reserva")}>
+                  <button
+                    className="big-action out"
+                    onClick={() => {
+                      setReservaTipoInicial("LIBERAR");
+                      setModal("reserva");
+                    }}
+                  >
                     <ArrowUpFromLine />
                     <span>
                       <b>Liberar reserva</b>
                       <small>Devolva peças reservadas que não foram usadas</small>
+                    </span>
+                    <ChevronRight />
+                  </button>
+                  <button
+                    className="big-action out"
+                    onClick={() => {
+                      setReservaTipoInicial("BAIXA");
+                      setModal("reserva");
+                    }}
+                  >
+                    <PackageCheck />
+                    <span>
+                      <b>Dar baixa</b>
+                      <small>Máquina montada saiu para o cliente: tire do estoque de vez</small>
                     </span>
                     <ChevronRight />
                   </button>
@@ -433,6 +460,7 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
       {modal === "reserva" && (
         <ReservaModal
           parts={data.parts}
+          tipoInicial={reservaTipoInicial}
           onClose={() => setModal(null)}
           onSaved={() => {
             setModal(null);
@@ -736,8 +764,18 @@ function OrderModal({ parts, onClose, onSaved }: { parts: Part[]; members: Membe
   );
 }
 
-function ReservaModal({ parts, onClose, onSaved }: { parts: Part[]; onClose: () => void; onSaved: () => void }) {
-  const [type, setType] = useState<"RESERVAR" | "LIBERAR">("RESERVAR");
+function ReservaModal({
+  parts,
+  tipoInicial,
+  onClose,
+  onSaved,
+}: {
+  parts: Part[];
+  tipoInicial: "RESERVAR" | "LIBERAR" | "BAIXA";
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [type, setType] = useState<"RESERVAR" | "LIBERAR" | "BAIXA">(tipoInicial);
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
   const [query, setQuery] = useState("");
@@ -745,10 +783,17 @@ function ReservaModal({ parts, onClose, onSaved }: { parts: Part[]; onClose: () 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  const found = parts.filter((p) => (p.code + " " + p.name).toLowerCase().includes(query.toLowerCase())).slice(0, 8);
+  // Liberar e Dar baixa só fazem sentido em peças que já têm reserva ativa.
+  const elegiveis = type === "RESERVAR" ? parts : parts.filter((p) => p.reserved_quantity > 0);
+  const found = elegiveis.filter((p) => (p.code + " " + p.name).toLowerCase().includes(query.toLowerCase())).slice(0, 8);
   const add = (id: number) => {
     setItems((x) => (x.some((i) => i.partId === id) ? x : [...x, { partId: id, quantity: 1 }]));
     setQuery("");
+  };
+
+  const trocarTipo = (novo: "RESERVAR" | "LIBERAR" | "BAIXA") => {
+    setType(novo);
+    setItems([]);
   };
 
   const save = async () => {
@@ -764,22 +809,40 @@ function ReservaModal({ parts, onClose, onSaved }: { parts: Part[]; onClose: () 
     }
   };
 
+  const motivoPlaceholder =
+    type === "RESERVAR"
+      ? "Ex.: Montagem de máquina para estoque…"
+      : type === "LIBERAR"
+      ? "Ex.: Devolução, máquina desmontada…"
+      : "Ex.: Venda ao cliente, máquina entregue…";
+
+  const confirmarLabel = type === "RESERVAR" ? "Confirmar reserva" : type === "LIBERAR" ? "Confirmar liberação" : "Confirmar baixa";
+
   return (
-    <Modal title="Movimentar reservados" subtitle="Separe ou libere peças reservadas para montagem de máquinas." onClose={onClose}>
-      <div className="segmented">
-        <button className={type === "RESERVAR" ? "active in" : ""} onClick={() => setType("RESERVAR")}>
+    <Modal title="Movimentar reservados" subtitle="Separe, libere ou dê baixa em peças reservadas para montagem de máquinas." onClose={onClose}>
+      <div className="segmented" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+        <button className={type === "RESERVAR" ? "active in" : ""} onClick={() => trocarTipo("RESERVAR")}>
           <Bookmark />
           Reservar
         </button>
-        <button className={type === "LIBERAR" ? "active out" : ""} onClick={() => setType("LIBERAR")}>
+        <button className={type === "LIBERAR" ? "active out" : ""} onClick={() => trocarTipo("LIBERAR")}>
           <ArrowUpFromLine />
-          Liberar reserva
+          Liberar
+        </button>
+        <button className={type === "BAIXA" ? "active out" : ""} onClick={() => trocarTipo("BAIXA")}>
+          <PackageCheck />
+          Dar baixa
         </button>
       </div>
+      {type === "BAIXA" && (
+        <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: "-6px 0 14px" }}>
+          Essa ação tira a peça do estoque de vez (não é possível desfazer pela tela).
+        </p>
+      )}
       <Field label="Motivo *">
-        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex.: Montagem de máquina para estoque, devolução…" />
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={motivoPlaceholder} />
       </Field>
-      <Field label="Adicionar peças">
+      <Field label={type === "RESERVAR" ? "Adicionar peças" : "Adicionar peças (só com reserva ativa)"}>
         <div className="part-search">
           <Search />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Digite o código ou nome da peça" />
@@ -795,6 +858,7 @@ function ReservaModal({ parts, onClose, onSaved }: { parts: Part[]; onClose: () 
                   </small>
                 </button>
               ))}
+              {!found.length && type !== "RESERVAR" && <p className="cart-empty">Nenhuma peça com reserva ativa encontrada.</p>}
             </div>
           )}
         </div>
@@ -838,7 +902,7 @@ function ReservaModal({ parts, onClose, onSaved }: { parts: Part[]; onClose: () 
           Cancelar
         </button>
         <button className="primary" disabled={saving || !items.length || !reason.trim()} onClick={save}>
-          {saving ? "Registrando…" : type === "RESERVAR" ? "Confirmar reserva" : "Confirmar liberação"}
+          {saving ? "Registrando…" : confirmarLabel}
         </button>
       </div>
     </Modal>
