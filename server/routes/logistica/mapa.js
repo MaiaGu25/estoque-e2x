@@ -16,13 +16,11 @@ function groupBy(rows, key) {
   return out;
 }
 
-// ---- Árvore completa do mapa ----
-// Fileira > Corredor > Montante > Lado > Prateleira (posição final).
+// ---- Mapa completo do galpão ----
+// Montante (desenhado livremente, com x/y/largura/altura) > Lado > Prateleira.
 
 router.get("/", (req, res) => {
-  const rows = db.prepare("SELECT * FROM logistics_rows ORDER BY display_order, code").all();
-  const aisles = db.prepare("SELECT * FROM logistics_aisles ORDER BY display_order, code").all();
-  const racks = db.prepare("SELECT * FROM logistics_racks ORDER BY display_order, code").all();
+  const racks = db.prepare("SELECT * FROM logistics_racks ORDER BY id").all();
   const sides = db.prepare("SELECT * FROM logistics_rack_sides ORDER BY display_order, code").all();
   const positions = db
     .prepare(
@@ -36,24 +34,16 @@ router.get("/", (req, res) => {
 
   const positionsBySide = groupBy(positions, "side_id");
   const sidesByRack = groupBy(sides, "rack_id");
-  const racksByAisle = groupBy(racks, "aisle_id");
-  const aislesByRow = groupBy(aisles, "row_id");
 
-  const tree = rows.map((row) => ({
-    ...row,
-    aisles: (aislesByRow[row.id] || []).map((aisle) => ({
-      ...aisle,
-      racks: (racksByAisle[aisle.id] || []).map((rack) => ({
-        ...rack,
-        sides: (sidesByRack[rack.id] || []).map((side) => ({
-          ...side,
-          positions: positionsBySide[side.id] || [],
-        })),
-      })),
+  const tree = racks.map((rack) => ({
+    ...rack,
+    sides: (sidesByRack[rack.id] || []).map((side) => ({
+      ...side,
+      positions: positionsBySide[side.id] || [],
     })),
   }));
 
-  res.json({ rows: tree });
+  res.json({ racks: tree });
 });
 
 // Busca por produto (destaca posições onde ele está guardado) ou por
@@ -86,13 +76,10 @@ router.get("/posicoes/:id", (req, res) => {
   const posicao = db
     .prepare(
       `SELECT pos.*, s.code AS side_code, s.name AS side_name,
-              rk.code AS rack_code, rk.name AS rack_name, a.code AS aisle_code, a.name AS aisle_name,
-              r.code AS row_code, r.name AS row_name
+              rk.id AS rack_id, rk.code AS rack_code, rk.name AS rack_name
        FROM logistics_positions pos
        JOIN logistics_rack_sides s ON s.id = pos.side_id
        JOIN logistics_racks rk ON rk.id = pos.rack_id
-       JOIN logistics_aisles a ON a.id = rk.aisle_id
-       JOIN logistics_rows r ON r.id = a.row_id
        WHERE pos.id = ?`
     )
     .get(id);
@@ -126,9 +113,12 @@ router.get("/posicoes/:id", (req, res) => {
   res.json({ posicao, produtos, movimentacoes });
 });
 
-// ---- Fileiras ----
+// ---- Montantes ----
+// O montante guarda posição/tamanho/orientação no mapa; a estrutura de
+// armazenagem (lados e prateleiras) vive em logistics_rack_sides /
+// logistics_positions, criada à parte.
 
-router.post("/fileiras", requireAdmin, (req, res) => {
+router.post("/montantes", requireAdmin, (req, res) => {
   const b = req.body || {};
   const code = String(b.code || "").trim().toUpperCase();
   const name = String(b.name || "").trim();
@@ -137,150 +127,28 @@ router.post("/fileiras", requireAdmin, (req, res) => {
   try {
     const result = db
       .prepare(
-        `INSERT INTO logistics_rows (code,name,color,display_order,active,created_by,created_at,updated_by,updated_at)
-         VALUES (?,?,?,?,1,?,?,?,?)`
+        `INSERT INTO logistics_racks (code,name,x,y,width,height,rotation,color,active,created_by,created_at,updated_by,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?)`
       )
-      .run(code, name, String(b.color || "").trim(), Number(b.displayOrder) || 0, req.user.id, now, req.user.id, now);
-    registrarAuditoria({ action: "fileira.criar", entityType: "logistics_rows", entityId: result.lastInsertRowid, user: req.user, newData: { code, name } });
+      .run(
+        code,
+        name,
+        Number.isFinite(Number(b.x)) ? Number(b.x) : 20,
+        Number.isFinite(Number(b.y)) ? Number(b.y) : 20,
+        Number(b.width) > 0 ? Number(b.width) : 120,
+        Number(b.height) > 0 ? Number(b.height) : 80,
+        [0, 90, 180, 270].includes(Number(b.rotation)) ? Number(b.rotation) : 0,
+        String(b.color || "").trim(),
+        req.user.id,
+        now,
+        req.user.id,
+        now
+      );
+    registrarAuditoria({ action: "montante.criar", entityType: "logistics_racks", entityId: result.lastInsertRowid, user: req.user, newData: { code, name } });
     broadcast("logistica");
     res.json({ ok: true, id: result.lastInsertRowid });
   } catch (error) {
-    res.status(400).json({ error: "Já existe uma fileira com esse código." });
-  }
-});
-
-router.patch("/fileiras/:id", requireAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const row = db.prepare("SELECT * FROM logistics_rows WHERE id = ?").get(id);
-  if (!row) return res.status(404).json({ error: "Fileira não encontrada." });
-  const b = req.body || {};
-  const fields = [];
-  const values = [];
-  for (const key of ["name", "color"]) {
-    if (typeof b[key] === "string") {
-      fields.push(`${key} = ?`);
-      values.push(b[key].trim());
-    }
-  }
-  if (typeof b.active === "boolean") {
-    fields.push("active = ?");
-    values.push(b.active ? 1 : 0);
-  }
-  if (!fields.length) return res.status(400).json({ error: "Nada para atualizar." });
-  fields.push("updated_by = ?", "updated_at = ?");
-  values.push(req.user.id, nowStamp(), id);
-  db.prepare(`UPDATE logistics_rows SET ${fields.join(", ")} WHERE id = ?`).run(...values);
-  registrarAuditoria({ action: "fileira.editar", entityType: "logistics_rows", entityId: id, user: req.user, previousData: row, newData: b });
-  broadcast("logistica");
-  res.json({ ok: true });
-});
-
-router.delete("/fileiras/:id", requireAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const row = db.prepare("SELECT * FROM logistics_rows WHERE id = ?").get(id);
-  if (!row) return res.status(404).json({ error: "Fileira não encontrada." });
-  if (temUso("row", id)) {
-    return res.status(400).json({ error: "Essa fileira já tem posições com estoque ou histórico. Inative em vez de excluir." });
-  }
-  try {
-    excluirRowCascata(id);
-    registrarAuditoria({ action: "fileira.excluir", entityType: "logistics_rows", entityId: id, user: req.user, previousData: row });
-    broadcast("logistica");
-    res.json({ ok: true });
-  } catch (error) {
-    res.status(400).json({ error: "Não foi possível excluir a fileira." });
-  }
-});
-
-// ---- Corredores ----
-
-router.post("/corredores", requireAdmin, (req, res) => {
-  const b = req.body || {};
-  const rowId = Number(b.rowId);
-  const code = String(b.code || "").trim().toUpperCase();
-  const name = String(b.name || "").trim();
-  if (!rowId || !code || !name) return res.status(400).json({ error: "Fileira, código e nome são obrigatórios." });
-  const row = db.prepare("SELECT id FROM logistics_rows WHERE id = ?").get(rowId);
-  if (!row) return res.status(400).json({ error: "Fileira inválida." });
-  const now = nowStamp();
-  try {
-    const result = db
-      .prepare(
-        `INSERT INTO logistics_aisles (row_id,code,name,display_order,active,created_by,created_at,updated_by,updated_at)
-         VALUES (?,?,?,?,1,?,?,?,?)`
-      )
-      .run(rowId, code, name, Number(b.displayOrder) || 0, req.user.id, now, req.user.id, now);
-    registrarAuditoria({ action: "corredor.criar", entityType: "logistics_aisles", entityId: result.lastInsertRowid, user: req.user, newData: { rowId, code, name } });
-    broadcast("logistica");
-    res.json({ ok: true, id: result.lastInsertRowid });
-  } catch (error) {
-    res.status(400).json({ error: "Já existe um corredor com esse código nessa fileira." });
-  }
-});
-
-router.patch("/corredores/:id", requireAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const aisle = db.prepare("SELECT * FROM logistics_aisles WHERE id = ?").get(id);
-  if (!aisle) return res.status(404).json({ error: "Corredor não encontrado." });
-  const b = req.body || {};
-  const fields = [];
-  const values = [];
-  if (typeof b.name === "string") {
-    fields.push("name = ?");
-    values.push(b.name.trim());
-  }
-  if (typeof b.active === "boolean") {
-    fields.push("active = ?");
-    values.push(b.active ? 1 : 0);
-  }
-  if (!fields.length) return res.status(400).json({ error: "Nada para atualizar." });
-  fields.push("updated_by = ?", "updated_at = ?");
-  values.push(req.user.id, nowStamp(), id);
-  db.prepare(`UPDATE logistics_aisles SET ${fields.join(", ")} WHERE id = ?`).run(...values);
-  registrarAuditoria({ action: "corredor.editar", entityType: "logistics_aisles", entityId: id, user: req.user, previousData: aisle, newData: b });
-  broadcast("logistica");
-  res.json({ ok: true });
-});
-
-router.delete("/corredores/:id", requireAdmin, (req, res) => {
-  const id = Number(req.params.id);
-  const aisle = db.prepare("SELECT * FROM logistics_aisles WHERE id = ?").get(id);
-  if (!aisle) return res.status(404).json({ error: "Corredor não encontrado." });
-  if (temUso("aisle", id)) {
-    return res.status(400).json({ error: "Esse corredor já tem posições com estoque ou histórico. Inative em vez de excluir." });
-  }
-  excluirAisleCascata(id);
-  registrarAuditoria({ action: "corredor.excluir", entityType: "logistics_aisles", entityId: id, user: req.user, previousData: aisle });
-  broadcast("logistica");
-  res.json({ ok: true });
-});
-
-// ---- Montantes ----
-// A partir de agora o montante em si só guarda identificação/aparência;
-// a estrutura de armazenagem (lados e prateleiras) vive em
-// logistics_rack_sides / logistics_positions, criada à parte.
-
-router.post("/montantes", requireAdmin, (req, res) => {
-  const b = req.body || {};
-  const aisleId = Number(b.aisleId);
-  const code = String(b.code || "").trim().toUpperCase();
-  const name = String(b.name || "").trim();
-  if (!aisleId || !code || !name) return res.status(400).json({ error: "Corredor, código e nome são obrigatórios." });
-  const aisle = db.prepare("SELECT id FROM logistics_aisles WHERE id = ?").get(aisleId);
-  if (!aisle) return res.status(400).json({ error: "Corredor inválido." });
-  const now = nowStamp();
-  try {
-    const result = db
-      .prepare(
-        `INSERT INTO logistics_racks (aisle_id,code,name,color,display_order,active,created_by,created_at,updated_by,updated_at)
-         VALUES (?,?,?,?,?,1,?,?,?,?)`
-      )
-      .run(aisleId, code, name, String(b.color || "").trim(), Number(b.displayOrder) || 0, req.user.id, now, req.user.id, now);
-    registrarAuditoria({ action: "montante.criar", entityType: "logistics_racks", entityId: result.lastInsertRowid, user: req.user, newData: { aisleId, code, name } });
-    broadcast("logistica");
-    res.json({ ok: true, id: result.lastInsertRowid });
-  } catch (error) {
-    res.status(400).json({ error: "Já existe um montante com esse código nesse corredor." });
+    res.status(400).json({ error: "Já existe um montante com esse código." });
   }
 });
 
@@ -302,6 +170,29 @@ router.patch("/montantes/:id", requireAdmin, (req, res) => {
   if (typeof b.active === "boolean") {
     fields.push("active = ?");
     values.push(b.active ? 1 : 0);
+  }
+  if (b.x !== undefined && Number.isFinite(Number(b.x))) {
+    fields.push("x = ?");
+    values.push(Number(b.x));
+  }
+  if (b.y !== undefined && Number.isFinite(Number(b.y))) {
+    fields.push("y = ?");
+    values.push(Number(b.y));
+  }
+  if (b.width !== undefined && Number(b.width) > 0) {
+    fields.push("width = ?");
+    values.push(Number(b.width));
+  }
+  if (b.height !== undefined && Number(b.height) > 0) {
+    fields.push("height = ?");
+    values.push(Number(b.height));
+  }
+  if (b.rotation !== undefined) {
+    if (![0, 90, 180, 270].includes(Number(b.rotation))) {
+      return res.status(400).json({ error: "Rotação inválida." });
+    }
+    fields.push("rotation = ?");
+    values.push(Number(b.rotation));
   }
   if (!fields.length) return res.status(400).json({ error: "Nada para atualizar." });
   fields.push("updated_by = ?", "updated_at = ?");
@@ -330,15 +221,7 @@ router.delete("/montantes/:id", requireAdmin, (req, res) => {
 // pode ter só 1 lado com 70 prateleiras, outro pode ter 2 lados com 8 cada.
 
 const criarLadoTx = transaction((b, user) => {
-  const rack = db
-    .prepare(
-      `SELECT rk.*, a.code AS aisle_code, r.code AS row_code
-       FROM logistics_racks rk
-       JOIN logistics_aisles a ON a.id = rk.aisle_id
-       JOIN logistics_rows r ON r.id = a.row_id
-       WHERE rk.id = ?`
-    )
-    .get(b.rackId);
+  const rack = db.prepare("SELECT * FROM logistics_racks WHERE id = ?").get(b.rackId);
   if (!rack) throw new Error("Montante não encontrado.");
   const now = nowStamp();
   const result = db
@@ -349,7 +232,7 @@ const criarLadoTx = transaction((b, user) => {
     .run(rack.id, b.code, b.name, b.shelvesCount, b.displayOrder || 0, user.id, now, user.id, now);
   const sideId = result.lastInsertRowid;
   for (let shelf = 1; shelf <= b.shelvesCount; shelf++) {
-    const code = codigoPosicao(rack.row_code, rack.aisle_code, rack.code, b.code, shelf);
+    const code = codigoPosicao(rack.code, b.code, shelf);
     db.prepare(
       `INSERT INTO logistics_positions (rack_id,side_id,shelf_number,code,name,active,blocked,created_by,created_at,updated_by,updated_at)
        VALUES (?,?,?,?,?,1,0,?,?,?,?)`
@@ -381,18 +264,10 @@ router.post("/lados", requireAdmin, (req, res) => {
 const alterarPrateleirasTx = transaction((side, novoTotal, user) => {
   const atual = side.shelves_count;
   if (novoTotal > atual) {
-    const rack = db
-      .prepare(
-        `SELECT rk.code AS rack_code, a.code AS aisle_code, r.code AS row_code
-         FROM logistics_racks rk
-         JOIN logistics_aisles a ON a.id = rk.aisle_id
-         JOIN logistics_rows r ON r.id = a.row_id
-         WHERE rk.id = ?`
-      )
-      .get(side.rack_id);
+    const rack = db.prepare("SELECT code FROM logistics_racks WHERE id = ?").get(side.rack_id);
     const now = nowStamp();
     for (let shelf = atual + 1; shelf <= novoTotal; shelf++) {
-      const code = codigoPosicao(rack.row_code, rack.aisle_code, rack.rack_code, side.code, shelf);
+      const code = codigoPosicao(rack.code, side.code, shelf);
       db.prepare(
         `INSERT INTO logistics_positions (rack_id,side_id,shelf_number,code,name,active,blocked,created_by,created_at,updated_by,updated_at)
          VALUES (?,?,?,?,?,1,0,?,?,?,?)`
@@ -518,22 +393,7 @@ function posicaoTemUso(positionId) {
 
 function temUso(nivel, id) {
   let positionIds = [];
-  if (nivel === "row") {
-    positionIds = db
-      .prepare(
-        `SELECT pos.id FROM logistics_positions pos
-         JOIN logistics_racks rk ON rk.id = pos.rack_id
-         JOIN logistics_aisles a ON a.id = rk.aisle_id
-         WHERE a.row_id = ?`
-      )
-      .all(id)
-      .map((r) => r.id);
-  } else if (nivel === "aisle") {
-    positionIds = db
-      .prepare(`SELECT pos.id FROM logistics_positions pos JOIN logistics_racks rk ON rk.id = pos.rack_id WHERE rk.aisle_id = ?`)
-      .all(id)
-      .map((r) => r.id);
-  } else if (nivel === "rack") {
+  if (nivel === "rack") {
     positionIds = db.prepare("SELECT id FROM logistics_positions WHERE rack_id = ?").all(id).map((r) => r.id);
   } else if (nivel === "side") {
     positionIds = db.prepare("SELECT id FROM logistics_positions WHERE side_id = ?").all(id).map((r) => r.id);
@@ -550,30 +410,6 @@ const excluirRackCascata = transaction((rackId) => {
   db.prepare("DELETE FROM logistics_positions WHERE rack_id = ?").run(rackId);
   db.prepare("DELETE FROM logistics_rack_sides WHERE rack_id = ?").run(rackId);
   db.prepare("DELETE FROM logistics_racks WHERE id = ?").run(rackId);
-});
-
-const excluirAisleCascata = transaction((aisleId) => {
-  const racks = db.prepare("SELECT id FROM logistics_racks WHERE aisle_id = ?").all(aisleId).map((r) => r.id);
-  for (const rackId of racks) {
-    db.prepare("DELETE FROM logistics_positions WHERE rack_id = ?").run(rackId);
-    db.prepare("DELETE FROM logistics_rack_sides WHERE rack_id = ?").run(rackId);
-  }
-  db.prepare("DELETE FROM logistics_racks WHERE aisle_id = ?").run(aisleId);
-  db.prepare("DELETE FROM logistics_aisles WHERE id = ?").run(aisleId);
-});
-
-const excluirRowCascata = transaction((rowId) => {
-  const aisles = db.prepare("SELECT id FROM logistics_aisles WHERE row_id = ?").all(rowId).map((r) => r.id);
-  for (const aisleId of aisles) {
-    const racks = db.prepare("SELECT id FROM logistics_racks WHERE aisle_id = ?").all(aisleId).map((r) => r.id);
-    for (const rackId of racks) {
-      db.prepare("DELETE FROM logistics_positions WHERE rack_id = ?").run(rackId);
-      db.prepare("DELETE FROM logistics_rack_sides WHERE rack_id = ?").run(rackId);
-    }
-    db.prepare("DELETE FROM logistics_racks WHERE aisle_id = ?").run(aisleId);
-  }
-  db.prepare("DELETE FROM logistics_aisles WHERE row_id = ?").run(rowId);
-  db.prepare("DELETE FROM logistics_rows WHERE id = ?").run(rowId);
 });
 
 module.exports = router;

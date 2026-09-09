@@ -6,9 +6,9 @@ import { Field, fmt } from "./ui";
 
 type PosicaoResultado = { id: number; code: string; name: string };
 
-// Seletor em cascata (fileira -> corredor -> montante -> lado -> prateleira).
-// Simples de qualquer pessoa entender e evita a complexidade de um mapa
-// livre para escolher uma posição num galpão pequeno/médio.
+// Seletor em cascata (montante -> lado -> prateleira). Simples de qualquer
+// pessoa entender, e as posições que dá pra escolher já vêm sempre dos
+// montantes desenhados no mapa.
 export function PosicaoSeletor({
   mapa,
   value,
@@ -22,63 +22,16 @@ export function PosicaoSeletor({
   excludeId?: number | null;
   label?: string;
 }) {
-  const [rowId, setRowId] = useState<number | null>(null);
-  const [aisleId, setAisleId] = useState<number | null>(null);
   const [rackId, setRackId] = useState<number | null>(null);
   const [sideId, setSideId] = useState<number | null>(null);
 
-  const row = mapa.rows.find((r) => r.id === rowId);
-  const aisle = row?.aisles.find((a) => a.id === aisleId);
-  const rack = aisle?.racks.find((r) => r.id === rackId);
+  const rack = mapa.racks.find((r) => r.id === rackId);
   const side = rack?.sides.find((s) => s.id === sideId);
 
   return (
     <div className="form-grid">
-      <Field label="Fileira">
-        <select
-          value={rowId ?? ""}
-          onChange={(e) => {
-            setRowId(Number(e.target.value) || null);
-            setAisleId(null);
-            setRackId(null);
-            setSideId(null);
-            onChange(null);
-          }}
-        >
-          <option value="">Selecione…</option>
-          {mapa.rows
-            .filter((r) => r.active)
-            .map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name} ({r.code})
-              </option>
-            ))}
-        </select>
-      </Field>
-      <Field label="Corredor">
-        <select
-          disabled={!row}
-          value={aisleId ?? ""}
-          onChange={(e) => {
-            setAisleId(Number(e.target.value) || null);
-            setRackId(null);
-            setSideId(null);
-            onChange(null);
-          }}
-        >
-          <option value="">Selecione…</option>
-          {(row?.aisles || [])
-            .filter((a) => a.active)
-            .map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name} ({a.code})
-              </option>
-            ))}
-        </select>
-      </Field>
       <Field label="Montante">
         <select
-          disabled={!aisle}
           value={rackId ?? ""}
           onChange={(e) => {
             setRackId(Number(e.target.value) || null);
@@ -87,7 +40,7 @@ export function PosicaoSeletor({
           }}
         >
           <option value="">Selecione…</option>
-          {(aisle?.racks || [])
+          {mapa.racks
             .filter((r) => r.active)
             .map((r) => (
               <option key={r.id} value={r.id}>
@@ -187,7 +140,7 @@ export function ProdutoBusca({ onSelect, placeholder }: { onSelect: (p: LogProdu
   );
 }
 
-// Busca direta por identificador ou nome de posição (ex.: F01-C02-M05-A-P003),
+// Busca direta por identificador ou nome de posição (ex.: MA-A-P003),
 // usada nos filtros de histórico e na busca do mapa.
 export function PosicaoBusca({ onSelect, placeholder }: { onSelect: (p: PosicaoResultado) => void; placeholder?: string }) {
   const [query, setQuery] = useState("");
@@ -221,7 +174,7 @@ export function PosicaoBusca({ onSelect, placeholder }: { onSelect: (p: PosicaoR
             selecionar(resultados[0]);
           }
         }}
-        placeholder={placeholder || "Digite o identificador da posição (ex.: F01-C02-M05-A-P003)"}
+        placeholder={placeholder || "Digite o identificador da posição (ex.: MA-A-P003)"}
       />
       {query && (
         <div className="results">

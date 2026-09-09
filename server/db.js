@@ -30,6 +30,35 @@ function transaction(fn) {
   };
 }
 
+// A Logística deixou de organizar posições por fileira/corredor e passou a
+// ser um mapa livre, com o montante desenhado direto no galpão (x/y/
+// largura/altura). Pedido explícito do usuário pra recomeçar essa parte do
+// zero, já que só havia dado de teste. logistics_rows é reconhecida aqui
+// como a marca do schema anterior (ela deixa de existir no schema novo);
+// se ela ainda existir, apaga todas as tabelas da Logística de uma vez só
+// pra recriar do zero logo em seguida - não mexe em nada do estoque de
+// peças, técnicos, RMA, etc. Roda no máximo uma vez: depois que
+// logistics_rows some, essa checagem nunca mais encontra nada pra apagar.
+const logisticaSchemaAntigo = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='logistics_rows'").get();
+if (logisticaSchemaAntigo) {
+  db.exec("PRAGMA foreign_keys = OFF");
+  for (const tabela of [
+    "logistics_audit_log",
+    "logistics_movements",
+    "logistics_operations",
+    "logistics_position_stock",
+    "logistics_positions",
+    "logistics_rack_sides",
+    "logistics_racks",
+    "logistics_aisles",
+    "logistics_rows",
+    "logistics_products",
+  ]) {
+    db.exec(`DROP TABLE IF EXISTS ${tabela}`);
+  }
+  db.exec("PRAGMA foreign_keys = ON");
+}
+
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -267,50 +296,31 @@ CREATE TABLE IF NOT EXISTS logistics_products (
   updated_at TEXT NOT NULL
 );
 
--- Hierarquia física: fileira -> corredor -> montante -> nível (a posição
--- de armazenagem em si). Um galpão só por enquanto: se um dia precisar de
--- mais de um galpão, dá pra adicionar uma tabela logistics_warehouses e uma
--- coluna warehouse_id aqui em cima sem quebrar nada do que já existe.
-CREATE TABLE IF NOT EXISTS logistics_rows (
+-- Hierarquia física: montante (desenhado livremente no mapa do galpão) ->
+-- lado -> prateleira (a posição de armazenagem em si). Um galpão só por
+-- enquanto: se um dia precisar de mais de um galpão, dá pra adicionar uma
+-- tabela logistics_warehouses e uma coluna warehouse_id aqui em cima sem
+-- quebrar nada do que já existe.
+-- x/y/width/height guardam a posição e o tamanho do retângulo do montante
+-- no mapa (visão de cima); rotation é só 0/90/180/270 e, na prática, o
+-- efeito de girar já fica embutido em width/height (largura e altura são
+-- sempre o tamanho já "rotacionado" que aparece na tela) - a coluna existe
+-- para lembrar a orientação original e for útil no futuro.
+CREATE TABLE IF NOT EXISTS logistics_racks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
+  x REAL NOT NULL DEFAULT 20,
+  y REAL NOT NULL DEFAULT 20,
+  width REAL NOT NULL DEFAULT 120 CHECK(width > 0),
+  height REAL NOT NULL DEFAULT 80 CHECK(height > 0),
+  rotation INTEGER NOT NULL DEFAULT 0 CHECK(rotation IN (0, 90, 180, 270)),
   color TEXT NOT NULL DEFAULT '',
-  display_order INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL,
   updated_by INTEGER REFERENCES users(id),
   updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS logistics_aisles (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  row_id INTEGER NOT NULL REFERENCES logistics_rows(id),
-  code TEXT NOT NULL,
-  name TEXT NOT NULL,
-  display_order INTEGER NOT NULL DEFAULT 0,
-  active INTEGER NOT NULL DEFAULT 1,
-  created_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  updated_by INTEGER REFERENCES users(id),
-  updated_at TEXT NOT NULL,
-  UNIQUE(row_id, code)
-);
-
-CREATE TABLE IF NOT EXISTS logistics_racks (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  aisle_id INTEGER NOT NULL REFERENCES logistics_aisles(id),
-  code TEXT NOT NULL,
-  name TEXT NOT NULL,
-  color TEXT NOT NULL DEFAULT '',
-  display_order INTEGER NOT NULL DEFAULT 0,
-  active INTEGER NOT NULL DEFAULT 1,
-  created_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL,
-  updated_by INTEGER REFERENCES users(id),
-  updated_at TEXT NOT NULL,
-  UNIQUE(aisle_id, code)
 );
 
 -- Um montante pode ter um ou mais "lados" (ex.: só a frente, ou frente e
@@ -334,12 +344,12 @@ CREATE TABLE IF NOT EXISTS logistics_rack_sides (
 );
 
 -- Cada linha aqui é uma prateleira de um lado de um montante, que é a
--- posição de armazenagem final (ex.: F01-C02-M05-A-P003). O código é
--- gerado a partir dos códigos dos pais e nunca muda depois de criado,
--- mesmo se o nome (name) for renomeado - assim o histórico de
--- movimentações nunca fica órfão. rack_id fica duplicado aqui (dá pra
--- chegar nele via side_id também) só pra evitar mais um JOIN nas consultas
--- que listam posições por montante.
+-- posição de armazenagem final (ex.: MA-A-P003). O código é gerado a
+-- partir dos códigos dos pais e nunca muda depois de criado, mesmo se o
+-- nome (name) for renomeado - assim o histórico de movimentações nunca
+-- fica órfão. rack_id fica duplicado aqui (dá pra chegar nele via side_id
+-- também) só pra evitar mais um JOIN nas consultas que listam posições por
+-- montante.
 CREATE TABLE IF NOT EXISTS logistics_positions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   rack_id INTEGER NOT NULL REFERENCES logistics_racks(id),
@@ -412,10 +422,10 @@ CREATE TABLE IF NOT EXISTS logistics_audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_logistics_products_active ON logistics_products(active);
-CREATE INDEX IF NOT EXISTS idx_logistics_aisles_row ON logistics_aisles(row_id);
-CREATE INDEX IF NOT EXISTS idx_logistics_racks_aisle ON logistics_racks(aisle_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_racks_active ON logistics_racks(active);
 CREATE INDEX IF NOT EXISTS idx_logistics_rack_sides_rack ON logistics_rack_sides(rack_id);
 CREATE INDEX IF NOT EXISTS idx_logistics_positions_rack ON logistics_positions(rack_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_positions_side ON logistics_positions(side_id);
 CREATE INDEX IF NOT EXISTS idx_logistics_position_stock_position ON logistics_position_stock(position_id);
 CREATE INDEX IF NOT EXISTS idx_logistics_position_stock_product ON logistics_position_stock(product_id);
 CREATE INDEX IF NOT EXISTS idx_logistics_operations_created_at ON logistics_operations(created_at);
@@ -482,110 +492,6 @@ if (reservedMovementsInfo && reservedMovementsInfo.sql.includes("'RESERVAR','LIB
   db.exec("CREATE INDEX IF NOT EXISTS idx_reserved_movements_part ON reserved_movements(part_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_reserved_movements_created_at ON reserved_movements(created_at)");
 }
-
-// logistics_racks tinha uma quantidade fixa de "níveis" (levels_count); um
-// montante agora pode ter vários "lados" configuráveis, cada lado com sua
-// própria quantidade de prateleiras (logistics_rack_sides). Bancos criados
-// antes dessa mudança são migrados criando um lado único "A" por montante
-// (com a mesma quantidade de níveis que ele já tinha) e preservando o id,
-// o saldo e o histórico de cada posição - só o layout (e o texto do
-// código) é atualizado para o novo formato F01-C02-M05-A-P003.
-const racksInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='logistics_racks'").get();
-if (racksInfo && racksInfo.sql.includes("levels_count")) {
-  // logistics_rack_sides e logistics_positions têm FK apontando para
-  // logistics_racks; o SQLite não deixa dar DROP TABLE numa tabela "pai"
-  // com filhos enquanto a checagem de chave estrangeira está ligada.
-  db.exec("PRAGMA foreign_keys = OFF");
-  db.exec("BEGIN");
-  try {
-    const racksAntigos = db.prepare("SELECT id, levels_count FROM logistics_racks").all();
-    const now = nowStamp();
-    const inserirLadoA = db.prepare(
-      `INSERT INTO logistics_rack_sides (rack_id,code,name,shelves_count,display_order,active,created_at,updated_at)
-       VALUES (?, 'A', 'Lado A', ?, 0, 1, ?, ?)`
-    );
-    for (const rack of racksAntigos) {
-      inserirLadoA.run(rack.id, rack.levels_count, now, now);
-    }
-    db.exec(`
-      CREATE TABLE logistics_racks_new (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        aisle_id INTEGER NOT NULL REFERENCES logistics_aisles(id),
-        code TEXT NOT NULL,
-        name TEXT NOT NULL,
-        color TEXT NOT NULL DEFAULT '',
-        display_order INTEGER NOT NULL DEFAULT 0,
-        active INTEGER NOT NULL DEFAULT 1,
-        created_by INTEGER REFERENCES users(id),
-        created_at TEXT NOT NULL,
-        updated_by INTEGER REFERENCES users(id),
-        updated_at TEXT NOT NULL,
-        UNIQUE(aisle_id, code)
-      );
-      INSERT INTO logistics_racks_new (id,aisle_id,code,name,color,display_order,active,created_by,created_at,updated_by,updated_at)
-        SELECT id,aisle_id,code,name,color,display_order,active,created_by,created_at,updated_by,updated_at FROM logistics_racks;
-      DROP TABLE logistics_racks;
-      ALTER TABLE logistics_racks_new RENAME TO logistics_racks;
-    `);
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    db.exec("PRAGMA foreign_keys = ON");
-    throw error;
-  }
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_logistics_racks_aisle ON logistics_racks(aisle_id)");
-}
-
-const positionsInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='logistics_positions'").get();
-if (positionsInfo && positionsInfo.sql.includes("level_number")) {
-  // logistics_position_stock e logistics_movements têm FK apontando para
-  // logistics_positions - mesmo motivo do bloco de logistics_racks acima.
-  db.exec("PRAGMA foreign_keys = OFF");
-  db.exec("BEGIN");
-  try {
-    db.exec(`
-      CREATE TABLE logistics_positions_new (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        rack_id INTEGER NOT NULL REFERENCES logistics_racks(id),
-        side_id INTEGER NOT NULL REFERENCES logistics_rack_sides(id),
-        shelf_number INTEGER NOT NULL,
-        code TEXT NOT NULL UNIQUE,
-        name TEXT NOT NULL DEFAULT '',
-        active INTEGER NOT NULL DEFAULT 1,
-        blocked INTEGER NOT NULL DEFAULT 0,
-        created_by INTEGER REFERENCES users(id),
-        created_at TEXT NOT NULL,
-        updated_by INTEGER REFERENCES users(id),
-        updated_at TEXT NOT NULL,
-        UNIQUE(side_id, shelf_number)
-      );
-      INSERT INTO logistics_positions_new (id,rack_id,side_id,shelf_number,code,name,active,blocked,created_by,created_at,updated_by,updated_at)
-        SELECT p.id, p.rack_id, s.id, p.level_number,
-               rw.code || '-' || al.code || '-' || rk.code || '-A-P' || substr('000' || CAST(p.level_number AS TEXT), -3, 3),
-               p.name, p.active, p.blocked, p.created_by, p.created_at, p.updated_by, p.updated_at
-        FROM logistics_positions p
-        JOIN logistics_racks rk ON rk.id = p.rack_id
-        JOIN logistics_aisles al ON al.id = rk.aisle_id
-        JOIN logistics_rows rw ON rw.id = al.row_id
-        JOIN logistics_rack_sides s ON s.rack_id = p.rack_id AND s.code = 'A';
-      DROP TABLE logistics_positions;
-      ALTER TABLE logistics_positions_new RENAME TO logistics_positions;
-    `);
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    db.exec("PRAGMA foreign_keys = ON");
-    throw error;
-  }
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_logistics_positions_rack ON logistics_positions(rack_id)");
-}
-
-// Criado aqui (e não junto com os outros índices lá em cima) porque numa
-// atualização a partir do schema antigo a coluna side_id só passa a
-// existir depois da migração de logistics_positions logo acima.
-db.exec("CREATE INDEX IF NOT EXISTS idx_logistics_positions_side ON logistics_positions(side_id)");
 
 function getMeta(key) {
   const row = db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key);
