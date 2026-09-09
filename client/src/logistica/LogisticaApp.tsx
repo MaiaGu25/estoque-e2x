@@ -12,7 +12,7 @@ import MovimentacoesTab from "./MovimentacoesTab";
 import HistoricoTab from "./HistoricoTab";
 import MapaTab from "./MapaTab";
 
-const empty: LogMapa = { rows: [] };
+const empty: LogMapa = { racks: [] };
 
 export default function LogisticaApp({ user, onLogout, onHome }: { user: User; onLogout: () => void; onHome: () => void }) {
   const isAdmin = user.role === "admin";
@@ -108,7 +108,7 @@ export default function LogisticaApp({ user, onLogout, onHome }: { user: User; o
         {tab === "painel" && <DashboardTab refreshKey={refreshKey} />}
         {tab === "produtos" && <ProdutosTab refreshKey={refreshKey} isAdmin={isAdmin} onAtualizado={recarregar} />}
         {tab === "movimentar" && <MovimentacoesTab mapa={mapa} onRegistrado={recarregar} usuario={user} />}
-        {tab === "historico" && <HistoricoTab refreshKey={refreshKey} mapa={mapa} />}
+        {tab === "historico" && <HistoricoTab refreshKey={refreshKey} />}
         {tab === "mapa" && <MapaTab mapa={mapa} isAdmin={isAdmin} onAtualizado={recarregar} />}
       </main>
       {mobile && <div className="scrim" onClick={() => setMobile(false)} />}

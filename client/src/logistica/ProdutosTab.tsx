@@ -304,7 +304,7 @@ function DetalheProdutoModal({
                     <td>
                       <b className="code">{p.position_code}</b>
                       <small>
-                        {p.row_name} · {p.aisle_name} · {p.rack_name} · {p.side_name} · Prateleira {p.shelf_number}
+                        {p.rack_name} · {p.side_name} · Prateleira {p.shelf_number}
                       </small>
                     </td>
                     <td className="num">{fmt(p.quantity)}</td>

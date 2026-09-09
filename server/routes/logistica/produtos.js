@@ -81,14 +81,11 @@ router.get("/:id", (req, res) => {
   const posicoes = db
     .prepare(
       `SELECT ps.quantity, pos.id AS position_id, pos.code AS position_code, pos.name AS position_name,
-              pos.shelf_number, s.code AS side_code, s.name AS side_name,
-              r.name AS row_name, a.name AS aisle_name, rk.name AS rack_name
+              pos.shelf_number, s.code AS side_code, s.name AS side_name, rk.name AS rack_name
        FROM logistics_position_stock ps
        JOIN logistics_positions pos ON pos.id = ps.position_id
        JOIN logistics_rack_sides s ON s.id = pos.side_id
        JOIN logistics_racks rk ON rk.id = pos.rack_id
-       JOIN logistics_aisles a ON a.id = rk.aisle_id
-       JOIN logistics_rows r ON r.id = a.row_id
        WHERE ps.product_id = ? AND ps.quantity > 0
        ORDER BY pos.code`
     )

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { api } from "../api";
-import type { LogHistoricoRegistro, LogMapa, LogProduto } from "../types";
+import type { LogHistoricoRegistro, LogProduto } from "../types";
 import { dt, Empty, Field, fmt, Modal, TipoBadge } from "./ui";
 import { PosicaoBusca, ProdutoBusca } from "./PosicaoSeletor";
 
@@ -15,7 +15,7 @@ const TIPOS = [
   ["AJUSTE", "Ajuste"],
 ] as const;
 
-export default function HistoricoTab({ refreshKey, mapa }: { refreshKey: number; mapa: LogMapa }) {
+export default function HistoricoTab({ refreshKey }: { refreshKey: number }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [tipo, setTipo] = useState("");
@@ -199,12 +199,12 @@ export default function HistoricoTab({ refreshKey, mapa }: { refreshKey: number;
         )}
       </div>
 
-      {operacaoAberta && <DetalheOperacaoModal id={operacaoAberta} onClose={() => setOperacaoAberta(null)} mapa={mapa} />}
+      {operacaoAberta && <DetalheOperacaoModal id={operacaoAberta} onClose={() => setOperacaoAberta(null)} />}
     </section>
   );
 }
 
-function DetalheOperacaoModal({ id, onClose }: { id: number; onClose: () => void; mapa: LogMapa }) {
+function DetalheOperacaoModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [dados, setDados] = useState<{ operacao: any; movimentos: any[] } | null>(null);
 
   useEffect(() => {

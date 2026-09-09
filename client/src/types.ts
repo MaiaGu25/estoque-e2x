@@ -298,33 +298,19 @@ export type LogLado = {
 
 export type LogMontante = {
   id: number;
-  aisle_id: number;
   code: string;
   name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: 0 | 90 | 180 | 270;
   color: string;
   active: number;
   sides: LogLado[];
 };
 
-export type LogCorredor = {
-  id: number;
-  row_id: number;
-  code: string;
-  name: string;
-  active: number;
-  racks: LogMontante[];
-};
-
-export type LogFileira = {
-  id: number;
-  code: string;
-  name: string;
-  color: string;
-  active: number;
-  aisles: LogCorredor[];
-};
-
-export type LogMapa = { rows: LogFileira[] };
+export type LogMapa = { racks: LogMontante[] };
 
 export type LogTipoOperacao = "ENTRADA" | "SAIDA" | "TRANSFERENCIA" | "AJUSTE";
 
