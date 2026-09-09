@@ -25,6 +25,7 @@ const tecnicosRoutes = require("./routes/tecnicos");
 const testesRoutes = require("./routes/testes");
 const rmaRoutes = require("./routes/rma");
 const pecasFornecedorRoutes = require("./routes/pecasFornecedor");
+const reservadosRoutes = require("./routes/reservados");
 
 const app = express();
 app.disable("x-powered-by");
@@ -41,6 +42,7 @@ app.use("/api/tecnicos", tecnicosRoutes);
 app.use("/api/testes", testesRoutes);
 app.use("/api/rma", rmaRoutes);
 app.use("/api/pecas-fornecedor", pecasFornecedorRoutes);
+app.use("/api/reservados", reservadosRoutes);
 
 const clientDist = path.join(__dirname, "..", "dist", "client");
 if (fs.existsSync(clientDist)) {

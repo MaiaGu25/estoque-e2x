@@ -46,7 +46,15 @@ router.get("/", (req, res) => {
     )
     .all();
 
-  res.json({ parts, movements, orders, members, reasons });
+  const reservedMovements = db
+    .prepare(
+      `SELECT rm.*, p.code, p.name AS part_name, p.unit FROM reserved_movements rm
+       JOIN parts p ON p.id = rm.part_id
+       ORDER BY rm.created_at DESC, rm.id DESC LIMIT 500`
+    )
+    .all();
+
+  res.json({ parts, movements, orders, members, reasons, reservedMovements });
 });
 
 module.exports = router;

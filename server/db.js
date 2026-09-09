@@ -83,6 +83,23 @@ CREATE TABLE IF NOT EXISTS movements (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS reserved_movements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  part_id INTEGER NOT NULL REFERENCES parts(id),
+  type TEXT NOT NULL CHECK(type IN ('RESERVAR','LIBERAR')),
+  quantity REAL NOT NULL,
+  previous_reserved REAL NOT NULL,
+  new_reserved REAL NOT NULL,
+  reason TEXT NOT NULL,
+  responsible TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reserved_movements_part ON reserved_movements(part_id);
+CREATE INDEX IF NOT EXISTS idx_reserved_movements_created_at ON reserved_movements(created_at);
+
 CREATE TABLE IF NOT EXISTS app_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -245,6 +262,11 @@ if (!columnExists("pecas_fornecedor", "pedido_numero")) {
 // dá um número sintético para cada uma virar um "pedido" de 1 item.
 db.exec("UPDATE pecas_fornecedor SET pedido_numero = 'LEG-' || id WHERE pedido_numero = ''");
 db.exec("CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_pedido ON pecas_fornecedor(pedido_numero)");
+
+// parts existia sem saldo reservado; adiciona a coluna em bancos já criados.
+if (!columnExists("parts", "reserved_quantity")) {
+  db.exec("ALTER TABLE parts ADD COLUMN reserved_quantity REAL NOT NULL DEFAULT 0");
+}
 
 function getMeta(key) {
   const row = db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key);
