@@ -263,6 +263,22 @@ CREATE TABLE IF NOT EXISTS fornecedor_contatos (
   created_at TEXT NOT NULL
 );
 
+-- Uma ordem (pedido) agrupa peças mandadas pro fornecedor de uma vez; o
+-- status de andamento é da ordem inteira, não de cada peça (o fornecedor
+-- decide o pacote todo junto, mesmo que aceite só parte das peças).
+CREATE TABLE IF NOT EXISTS pedidos_fornecedor (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero TEXT NOT NULL UNIQUE,
+  fornecedor_id INTEGER NOT NULL REFERENCES fornecedores(id),
+  rma_relacionado TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'em_aberto'
+    CHECK(status IN ('em_aberto','registrado','em_analise','liberado','concluido')),
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS pecas_fornecedor (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   codigo TEXT NOT NULL DEFAULT '',
@@ -272,10 +288,9 @@ CREATE TABLE IF NOT EXISTS pecas_fornecedor (
   marca TEXT NOT NULL DEFAULT '',
   defeito TEXT NOT NULL DEFAULT '',
   fornecedor_id INTEGER NOT NULL REFERENCES fornecedores(id),
-  status TEXT NOT NULL DEFAULT 'aguardando_envio'
-    CHECK(status IN ('aguardando_envio','aguardando_fornecedor','trocada','recusada')),
-  rma_relacionado TEXT NOT NULL DEFAULT '',
+  decisao TEXT NOT NULL DEFAULT 'pendente' CHECK(decisao IN ('pendente','aceita','recusada')),
   observacoes TEXT NOT NULL DEFAULT '',
+  pedido_numero TEXT NOT NULL DEFAULT '',
   created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL,
   updated_by INTEGER REFERENCES users(id),
@@ -291,10 +306,10 @@ CREATE TABLE IF NOT EXISTS pecas_fornecedor_eventos (
   created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_status ON pecas_fornecedor(status);
 CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_created_at ON pecas_fornecedor(created_at);
 CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_eventos_peca ON pecas_fornecedor_eventos(peca_id);
 CREATE INDEX IF NOT EXISTS idx_fornecedor_contatos_fornecedor ON fornecedor_contatos(fornecedor_id);
+CREATE INDEX IF NOT EXISTS idx_pedidos_fornecedor_status ON pedidos_fornecedor(status);
 
 -- Módulo "Logística": estoque de galpão totalmente independente do Estoque
 -- geral (parts/movements/orders) - nenhuma tabela ou saldo é compartilhado.
@@ -491,6 +506,112 @@ if (!columnExists("pecas_fornecedor", "pedido_numero")) {
 // dá um número sintético para cada uma virar um "pedido" de 1 item.
 db.exec("UPDATE pecas_fornecedor SET pedido_numero = 'LEG-' || id WHERE pedido_numero = ''");
 db.exec("CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_pedido ON pecas_fornecedor(pedido_numero)");
+
+// O status de uma ordem pro fornecedor deixou de ser por peça e passou a
+// ser da ordem inteira (5 etapas: em_aberto/registrado/em_analise/
+// liberado/concluido); o que decide se cada peça foi aceita ou recusada
+// pelo fornecedor virou um campo separado ("decisao"). pecas_fornecedor
+// existia só com o status antigo por peça - migra criando um registro em
+// pedidos_fornecedor pra cada pedido_numero já existente (com um status
+// deduzido a partir do que as peças tinham) e recria pecas_fornecedor já
+// com "decisao" no lugar de "status" (SQLite não altera CHECK de coluna
+// existente, então precisa recriar a tabela, igual foi feito antes pra
+// reserved_movements).
+const pecasFornecedorInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='pecas_fornecedor'").get();
+if (pecasFornecedorInfo && pecasFornecedorInfo.sql.includes("aguardando_envio")) {
+  const pecasAntigas = db
+    .prepare("SELECT pedido_numero, fornecedor_id, rma_relacionado, status, created_by, created_at, updated_at FROM pecas_fornecedor ORDER BY pedido_numero, id")
+    .all();
+  const porPedido = new Map();
+  for (const p of pecasAntigas) {
+    if (!porPedido.has(p.pedido_numero)) {
+      porPedido.set(p.pedido_numero, {
+        fornecedorId: p.fornecedor_id,
+        rmaRelacionado: "",
+        createdBy: p.created_by,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        statuses: new Set(),
+      });
+    }
+    const grupo = porPedido.get(p.pedido_numero);
+    if (!grupo.rmaRelacionado && p.rma_relacionado) grupo.rmaRelacionado = p.rma_relacionado;
+    if (p.created_at < grupo.createdAt) grupo.createdAt = p.created_at;
+    if (p.updated_at > grupo.updatedAt) grupo.updatedAt = p.updated_at;
+    grupo.statuses.add(p.status);
+  }
+
+  function statusDaOrdem(statuses) {
+    const todasDecididas = [...statuses].every((s) => s === "trocada" || s === "recusada");
+    if (todasDecididas) return "concluido";
+    if (statuses.has("aguardando_fornecedor")) return "em_analise";
+    if (statuses.has("trocada") || statuses.has("recusada")) return "liberado";
+    return "em_aberto";
+  }
+
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.exec("BEGIN");
+  try {
+    const inserirPedido = db.prepare(
+      `INSERT INTO pedidos_fornecedor (numero,fornecedor_id,rma_relacionado,status,created_by,created_at,updated_by,updated_at)
+       VALUES (?,?,?,?,?,?,?,?)`
+    );
+    for (const [numero, grupo] of porPedido) {
+      inserirPedido.run(
+        numero,
+        grupo.fornecedorId,
+        grupo.rmaRelacionado,
+        statusDaOrdem(grupo.statuses),
+        grupo.createdBy,
+        grupo.createdAt,
+        grupo.createdBy,
+        grupo.updatedAt
+      );
+    }
+
+    db.exec(`
+      CREATE TABLE pecas_fornecedor_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo TEXT NOT NULL DEFAULT '',
+        serial TEXT NOT NULL DEFAULT '',
+        descricao TEXT NOT NULL DEFAULT '',
+        ean TEXT NOT NULL DEFAULT '',
+        marca TEXT NOT NULL DEFAULT '',
+        defeito TEXT NOT NULL DEFAULT '',
+        fornecedor_id INTEGER NOT NULL REFERENCES fornecedores(id),
+        decisao TEXT NOT NULL DEFAULT 'pendente' CHECK(decisao IN ('pendente','aceita','recusada')),
+        observacoes TEXT NOT NULL DEFAULT '',
+        pedido_numero TEXT NOT NULL DEFAULT '',
+        created_by INTEGER REFERENCES users(id),
+        created_at TEXT NOT NULL,
+        updated_by INTEGER REFERENCES users(id),
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO pecas_fornecedor_new
+        (id,codigo,serial,descricao,ean,marca,defeito,fornecedor_id,decisao,observacoes,pedido_numero,created_by,created_at,updated_by,updated_at)
+      SELECT
+        id,codigo,serial,descricao,ean,marca,defeito,fornecedor_id,
+        CASE status WHEN 'trocada' THEN 'aceita' WHEN 'recusada' THEN 'recusada' ELSE 'pendente' END,
+        observacoes,pedido_numero,created_by,created_at,updated_by,updated_at
+      FROM pecas_fornecedor;
+      DROP TABLE pecas_fornecedor;
+      ALTER TABLE pecas_fornecedor_new RENAME TO pecas_fornecedor;
+    `);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    db.exec("PRAGMA foreign_keys = ON");
+    throw error;
+  }
+  db.exec("PRAGMA foreign_keys = ON");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_pedido ON pecas_fornecedor(pedido_numero)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_created_at ON pecas_fornecedor(created_at)");
+}
+
+// Criado aqui (não junto com os outros índices lá em cima) porque numa
+// atualização a partir do schema antigo a coluna decisao só passa a
+// existir depois da recriação da tabela, logo acima.
+db.exec("CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_decisao ON pecas_fornecedor(decisao)");
 
 // fornecedores existia sem endereço; adiciona as colunas em bancos já
 // criados, sem mexer no que já estava cadastrado.
