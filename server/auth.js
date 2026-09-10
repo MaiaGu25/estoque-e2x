@@ -4,6 +4,10 @@ const { db, getOrCreateSessionSecret } = require("./db");
 const COOKIE_NAME = "estoque_session";
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias
 const SECRET = getOrCreateSessionSecret();
+// Em rede local (HTTP simples) o cookie precisa funcionar sem HTTPS. Quando
+// o sistema for colocado online atrás de HTTPS, define COOKIE_SECURE=1 no
+// ambiente para o navegador só enviar esse cookie em conexões seguras.
+const COOKIE_SECURE = process.env.COOKIE_SECURE === "1";
 
 function sign(payloadObj) {
   const payload = Buffer.from(JSON.stringify(payloadObj)).toString("base64url");
@@ -30,6 +34,7 @@ function issueSession(res, user) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
+    secure: COOKIE_SECURE,
     maxAge: MAX_AGE_MS,
   });
 }

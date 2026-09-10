@@ -3,6 +3,8 @@ const fs = require("fs");
 const http = require("http");
 const express = require("express");
 const cookieParser = require("cookie-parser");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const realtime = require("./realtime");
 
 // node:sqlite ainda é experimental no Node.js e imprime um aviso ao ser
@@ -30,9 +32,28 @@ const logisticaRoutes = require("./routes/logistica");
 
 const app = express();
 app.disable("x-powered-by");
+// CSP desligado porque o build do Vite ainda não foi ajustado pra uma
+// política restritiva - os outros cabeçalhos (X-Content-Type-Options,
+// X-Frame-Options, etc.) já ajudam sem risco de quebrar o app.
+app.use(helmet({ contentSecurityPolicy: false }));
 // Limite maior por causa das fotos (base64) da Central de Testes.
 app.use(express.json({ limit: "12mb" }));
 app.use(cookieParser());
+
+// Limite geral por IP em toda a API, como segunda camada de defesa contra
+// abuso/varredura automatizada - além do limite mais rígido só no login.
+// O app não faz polling (as atualizações em tempo real vêm por WebSocket),
+// então uso normal não chega perto desse número.
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 60 * 1000,
+    limit: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Muitas requisições. Aguarde um instante e tente novamente." },
+  })
+);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
