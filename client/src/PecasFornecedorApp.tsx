@@ -31,6 +31,7 @@ const STATUS_LABEL: Record<PedidoFornecedorStatus, string> = {
   em_aberto: "Em aberto",
   registrado: "Registrado",
   em_analise: "Em análise",
+  revisar: "Revisar",
   liberado: "Liberado",
   concluido: "Concluído",
 };
@@ -38,6 +39,7 @@ const STATUS_CLASS: Record<PedidoFornecedorStatus, string> = {
   em_aberto: "warn",
   registrado: "",
   em_analise: "transfer",
+  revisar: "warn",
   liberado: "adjust",
   concluido: "ok",
 };

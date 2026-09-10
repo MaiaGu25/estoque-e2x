@@ -218,7 +218,7 @@ export type Fornecedor = {
   contatos: FornecedorContato[];
 };
 
-export type PedidoFornecedorStatus = "em_aberto" | "registrado" | "em_analise" | "liberado" | "concluido";
+export type PedidoFornecedorStatus = "em_aberto" | "registrado" | "em_analise" | "revisar" | "liberado" | "concluido";
 
 export type PecaFornecedorDecisao = "pendente" | "aceita" | "recusada";
 

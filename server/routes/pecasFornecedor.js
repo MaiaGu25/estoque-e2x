@@ -15,6 +15,7 @@ const STATUS_LABEL = {
   em_aberto: "Em aberto",
   registrado: "Registrado",
   em_analise: "Em análise",
+  revisar: "Revisar",
   liberado: "Liberado",
   concluido: "Concluído",
 };
