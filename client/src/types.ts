@@ -195,12 +195,27 @@ export type RmaStats = {
 
 // ---- Peças / Fornecedores ----
 
+export type FornecedorContato = {
+  id: number;
+  fornecedor_id: number;
+  nome: string;
+  telefone: string;
+  email: string;
+  created_at: string;
+};
+
 export type Fornecedor = {
   id: number;
   nome: string;
   identificacao: string;
   contato: string;
+  endereco: string;
+  numero: string;
+  cep: string;
+  cidade: string;
+  estado: string;
   ativo: number;
+  contatos: FornecedorContato[];
 };
 
 export type PecaFornecedorStatus = "aguardando_envio" | "aguardando_fornecedor" | "trocada" | "recusada";

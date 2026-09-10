@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Archive, ArrowLeft, BarChart3, ClipboardList, FileSpreadsheet, LogOut, Menu,
-  MessageSquarePlus, Plus, RefreshCw, Search, ShieldCheck, Truck,
+  MessageSquarePlus, Plus, RefreshCw, Search, ShieldCheck, Trash2, Truck,
   TriangleAlert, X,
 } from "lucide-react";
 import { api } from "./api";
@@ -166,7 +166,16 @@ export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: U
         />
       )}
       {pedidoAberto !== null && (
-        <PedidoDetalheModal numero={pedidoAberto} onClose={() => setPedidoAberto(null)} onAtualizado={recarregar} />
+        <PedidoDetalheModal
+          numero={pedidoAberto}
+          isAdmin={user.role === "admin"}
+          onClose={() => setPedidoAberto(null)}
+          onAtualizado={recarregar}
+          onExcluido={() => {
+            setPedidoAberto(null);
+            recarregar();
+          }}
+        />
       )}
     </div>
   );
@@ -407,37 +416,18 @@ function OrdensTab({
   );
 }
 
+function resumoContatos(f: Fornecedor) {
+  if (f.contatos.length) {
+    const [primeiro, ...resto] = f.contatos;
+    const label = [primeiro.nome, primeiro.telefone || primeiro.email].filter(Boolean).join(" · ") || "—";
+    return resto.length ? `${label} (+${resto.length})` : label;
+  }
+  return f.contato || "—";
+}
+
 function FornecedoresTab({ fornecedores, onAtualizado }: { fornecedores: Fornecedor[]; onAtualizado: () => void }) {
   const [showNovo, setShowNovo] = useState(false);
-  const [nome, setNome] = useState("");
-  const [identificacao, setIdentificacao] = useState("");
-  const [contato, setContato] = useState("");
-  const [err, setErr] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const salvar = async () => {
-    if (!nome.trim()) return setErr("Digite o nome do fornecedor.");
-    setSaving(true);
-    setErr("");
-    try {
-      await api.post("/api/pecas-fornecedor/fornecedores", { nome, identificacao, contato });
-      setNome("");
-      setIdentificacao("");
-      setContato("");
-      setShowNovo(false);
-      onAtualizado();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Não foi possível cadastrar.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const desativar = async (f: Fornecedor) => {
-    if (!confirm(`Desativar o fornecedor ${f.nome}?`)) return;
-    await api.patch(`/api/pecas-fornecedor/fornecedores/${f.id}`, { ativo: false });
-    onAtualizado();
-  };
+  const [fornecedorAberto, setFornecedorAberto] = useState<Fornecedor | null>(null);
 
   return (
     <section>
@@ -453,23 +443,21 @@ function FornecedoresTab({ fornecedores, onAtualizado }: { fornecedores: Fornece
             <tr>
               <th>Nome</th>
               <th>Identificação</th>
+              <th>Cidade/UF</th>
               <th>Contato</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {fornecedores.map((f) => (
-              <tr key={f.id}>
+              <tr key={f.id} onClick={() => setFornecedorAberto(f)} style={{ cursor: "pointer" }}>
                 <td>
                   <strong>{f.nome}</strong>
                 </td>
                 <td>{f.identificacao || "—"}</td>
-                <td>{f.contato || "—"}</td>
-                <td>
-                  <button className="secondary" onClick={() => desativar(f)}>
-                    Desativar
-                  </button>
-                </td>
+                <td>{f.cidade ? `${f.cidade}${f.estado ? "/" + f.estado : ""}` : "—"}</td>
+                <td>{resumoContatos(f)}</td>
+                <td></td>
               </tr>
             ))}
           </tbody>
@@ -478,44 +466,283 @@ function FornecedoresTab({ fornecedores, onAtualizado }: { fornecedores: Fornece
       </div>
 
       {showNovo && (
-        <div className="modal-backdrop">
-          <div className="modal">
-            <div className="modal-head">
-              <div>
-                <h2>Novo fornecedor</h2>
-                <p>Cadastre com uma identificação (CNPJ ou código interno) pra facilitar o controle.</p>
-              </div>
-              <button className="icon-btn" onClick={() => setShowNovo(false)}>
-                <X />
-              </button>
-            </div>
-            <label className="field">
-              <span>Nome *</span>
-              <input value={nome} onChange={(e) => setNome(e.target.value)} />
-            </label>
-            <div className="form-grid">
-              <label className="field">
-                <span>Identificação (CNPJ / código)</span>
-                <input value={identificacao} onChange={(e) => setIdentificacao(e.target.value)} />
-              </label>
-              <label className="field">
-                <span>Contato</span>
-                <input value={contato} onChange={(e) => setContato(e.target.value)} placeholder="Telefone ou email" />
-              </label>
-            </div>
-            {err && <div className="error">{err}</div>}
-            <div className="modal-actions">
-              <button className="secondary" onClick={() => setShowNovo(false)}>
-                Cancelar
-              </button>
-              <button className="primary" disabled={saving} onClick={salvar}>
-                {saving ? "Salvando…" : "Cadastrar"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <NovoFornecedorModal
+          onClose={() => setShowNovo(false)}
+          onCriado={() => {
+            setShowNovo(false);
+            onAtualizado();
+          }}
+        />
+      )}
+      {fornecedorAberto && (
+        <DetalheFornecedorModal
+          fornecedor={fornecedorAberto}
+          onClose={() => setFornecedorAberto(null)}
+          onAtualizado={onAtualizado}
+          onDesativado={() => {
+            setFornecedorAberto(null);
+            onAtualizado();
+          }}
+        />
       )}
     </section>
+  );
+}
+
+type ContatoLinha = { key: number; nome: string; telefone: string; email: string };
+let contatoLinhaSeq = 0;
+
+function CamposEndereco({
+  v,
+  onChange,
+}: {
+  v: { endereco: string; numero: string; cep: string; cidade: string; estado: string };
+  onChange: (patch: Partial<typeof v>) => void;
+}) {
+  return (
+    <div className="form-grid">
+      <Field label="Endereço">
+        <input value={v.endereco} onChange={(e) => onChange({ endereco: e.target.value })} />
+      </Field>
+      <Field label="Número">
+        <input value={v.numero} onChange={(e) => onChange({ numero: e.target.value })} />
+      </Field>
+      <Field label="CEP">
+        <input value={v.cep} onChange={(e) => onChange({ cep: e.target.value })} />
+      </Field>
+      <Field label="Cidade">
+        <input value={v.cidade} onChange={(e) => onChange({ cidade: e.target.value })} />
+      </Field>
+      <Field label="Estado">
+        <input value={v.estado} onChange={(e) => onChange({ estado: e.target.value })} placeholder="Ex.: SP" maxLength={2} />
+      </Field>
+    </div>
+  );
+}
+
+function NovoFornecedorModal({ onClose, onCriado }: { onClose: () => void; onCriado: () => void }) {
+  const [nome, setNome] = useState("");
+  const [identificacao, setIdentificacao] = useState("");
+  const [endereco, setEndereco] = useState({ endereco: "", numero: "", cep: "", cidade: "", estado: "" });
+  const [contatos, setContatos] = useState<ContatoLinha[]>([]);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const adicionarContato = () => setContatos((x) => [...x, { key: ++contatoLinhaSeq, nome: "", telefone: "", email: "" }]);
+  const atualizarContato = (key: number, patch: Partial<ContatoLinha>) =>
+    setContatos((x) => x.map((c) => (c.key === key ? { ...c, ...patch } : c)));
+  const removerContato = (key: number) => setContatos((x) => x.filter((c) => c.key !== key));
+
+  const salvar = async () => {
+    if (!nome.trim()) return setErr("Digite o nome do fornecedor.");
+    setSaving(true);
+    setErr("");
+    try {
+      await api.post("/api/pecas-fornecedor/fornecedores", {
+        nome,
+        identificacao,
+        ...endereco,
+        contatos: contatos.map(({ nome, telefone, email }) => ({ nome, telefone, email })),
+      });
+      onCriado();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível cadastrar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Novo fornecedor" subtitle="Cadastre com uma identificação (CNPJ ou código interno) pra facilitar o controle." onClose={onClose}>
+      <div className="form-grid">
+        <Field label="Nome *">
+          <input value={nome} onChange={(e) => setNome(e.target.value)} />
+        </Field>
+        <Field label="Identificação (CNPJ / código)">
+          <input value={identificacao} onChange={(e) => setIdentificacao(e.target.value)} />
+        </Field>
+      </div>
+
+      <CamposEndereco v={endereco} onChange={(patch) => setEndereco((x) => ({ ...x, ...patch }))} />
+
+      <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: "6px 0 8px" }}>
+        Contatos (podem ser pessoas diferentes)
+      </p>
+      <div className="cart" style={{ marginBottom: 10 }}>
+        {contatos.map((c) => (
+          <div className="cart-row" key={c.key} style={{ gridTemplateColumns: "1fr 1fr 1fr 32px" }}>
+            <input value={c.nome} onChange={(e) => atualizarContato(c.key, { nome: e.target.value })} placeholder="Nome" />
+            <input value={c.telefone} onChange={(e) => atualizarContato(c.key, { telefone: e.target.value })} placeholder="Telefone" />
+            <input value={c.email} onChange={(e) => atualizarContato(c.key, { email: e.target.value })} placeholder="E-mail" />
+            <button onClick={() => removerContato(c.key)}>
+              <X />
+            </button>
+          </div>
+        ))}
+        {!contatos.length && <p className="cart-empty">Nenhum contato adicionado ainda.</p>}
+      </div>
+      <button className="secondary" onClick={adicionarContato} style={{ marginBottom: 14 }}>
+        <Plus size={15} /> Adicionar contato
+      </button>
+
+      {err && <div className="error">{err}</div>}
+      <div className="modal-actions">
+        <button className="secondary" onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="primary" disabled={saving} onClick={salvar}>
+          {saving ? "Salvando…" : "Cadastrar"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function DetalheFornecedorModal({
+  fornecedor,
+  onClose,
+  onAtualizado,
+  onDesativado,
+}: {
+  fornecedor: Fornecedor;
+  onClose: () => void;
+  onAtualizado: () => void;
+  onDesativado: () => void;
+}) {
+  const [f, setF] = useState(fornecedor);
+  const [novoContato, setNovoContato] = useState({ nome: "", telefone: "", email: "" });
+  const [err, setErr] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const recarregarContatos = async () => {
+    const r = await api.get<{ fornecedores: Fornecedor[] }>("/api/pecas-fornecedor/fornecedores");
+    const atualizado = r.fornecedores.find((x) => x.id === f.id);
+    if (atualizado) setF(atualizado);
+    onAtualizado();
+  };
+
+  const salvarCampo = async (patch: Record<string, string>) => {
+    setSalvando(true);
+    setErr("");
+    try {
+      await api.patch(`/api/pecas-fornecedor/fornecedores/${f.id}`, patch);
+      setF((x) => ({ ...x, ...patch }));
+      onAtualizado();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível salvar.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const adicionarContato = async () => {
+    if (!novoContato.nome.trim() && !novoContato.telefone.trim() && !novoContato.email.trim()) return;
+    setSalvando(true);
+    setErr("");
+    try {
+      await api.post(`/api/pecas-fornecedor/fornecedores/${f.id}/contatos`, novoContato);
+      setNovoContato({ nome: "", telefone: "", email: "" });
+      await recarregarContatos();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível adicionar o contato.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const removerContato = async (contatoId: number) => {
+    setSalvando(true);
+    setErr("");
+    try {
+      await api.del(`/api/pecas-fornecedor/fornecedores/${f.id}/contatos/${contatoId}`);
+      await recarregarContatos();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível remover o contato.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const desativar = async () => {
+    if (!confirm(`Desativar o fornecedor ${f.nome}?`)) return;
+    await api.patch(`/api/pecas-fornecedor/fornecedores/${f.id}`, { ativo: false });
+    onDesativado();
+  };
+
+  return (
+    <Modal title={f.nome} subtitle={f.identificacao || undefined} onClose={onClose} wide>
+      <div className="form-grid">
+        <Field label="Nome">
+          <input defaultValue={f.nome} onBlur={(e) => e.target.value.trim() && e.target.value !== f.nome && salvarCampo({ nome: e.target.value })} />
+        </Field>
+        <Field label="Identificação (CNPJ / código)">
+          <input
+            defaultValue={f.identificacao}
+            onBlur={(e) => e.target.value !== f.identificacao && salvarCampo({ identificacao: e.target.value })}
+          />
+        </Field>
+      </div>
+
+      <div className="form-grid">
+        <Field label="Endereço">
+          <input defaultValue={f.endereco} onBlur={(e) => e.target.value !== f.endereco && salvarCampo({ endereco: e.target.value })} />
+        </Field>
+        <Field label="Número">
+          <input defaultValue={f.numero} onBlur={(e) => e.target.value !== f.numero && salvarCampo({ numero: e.target.value })} />
+        </Field>
+        <Field label="CEP">
+          <input defaultValue={f.cep} onBlur={(e) => e.target.value !== f.cep && salvarCampo({ cep: e.target.value })} />
+        </Field>
+        <Field label="Cidade">
+          <input defaultValue={f.cidade} onBlur={(e) => e.target.value !== f.cidade && salvarCampo({ cidade: e.target.value })} />
+        </Field>
+        <Field label="Estado">
+          <input
+            defaultValue={f.estado}
+            onBlur={(e) => e.target.value !== f.estado && salvarCampo({ estado: e.target.value })}
+            placeholder="Ex.: SP"
+            maxLength={2}
+          />
+        </Field>
+      </div>
+
+      <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: "6px 0 8px" }}>
+        Contatos
+      </p>
+      <div className="cart" style={{ marginBottom: 10 }}>
+        {f.contatos.map((c) => (
+          <div className="cart-row" key={c.id} style={{ gridTemplateColumns: "1fr 1fr 32px" }}>
+            <span>
+              <b>{c.nome || "Sem nome"}</b>
+              <small>{[c.telefone, c.email].filter(Boolean).join(" · ") || "—"}</small>
+            </span>
+            <span />
+            <button onClick={() => removerContato(c.id)} disabled={salvando}>
+              <X />
+            </button>
+          </div>
+        ))}
+        {!f.contatos.length && <p className="cart-empty">Nenhum contato cadastrado ainda.</p>}
+      </div>
+      <div className="cart-row" style={{ gridTemplateColumns: "1fr 1fr 1fr 32px", padding: "0 0 14px" }}>
+        <input value={novoContato.nome} onChange={(e) => setNovoContato((x) => ({ ...x, nome: e.target.value }))} placeholder="Nome" />
+        <input value={novoContato.telefone} onChange={(e) => setNovoContato((x) => ({ ...x, telefone: e.target.value }))} placeholder="Telefone" />
+        <input value={novoContato.email} onChange={(e) => setNovoContato((x) => ({ ...x, email: e.target.value }))} placeholder="E-mail" />
+        <button onClick={adicionarContato} disabled={salvando}>
+          <Plus size={15} />
+        </button>
+      </div>
+
+      {err && <div className="error">{err}</div>}
+      <div className="modal-actions">
+        <button className="secondary" onClick={desativar}>
+          Desativar fornecedor
+        </button>
+        <button className="primary" onClick={onClose}>
+          Fechar
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -528,10 +755,22 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Modal({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({
+  title,
+  subtitle,
+  onClose,
+  children,
+  wide,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
   return (
     <div className="modal-backdrop">
-      <div className="modal">
+      <div className="modal" style={wide ? { width: "min(960px,100%)" } : undefined}>
         <div className="modal-head">
           <div>
             <h2>{title}</h2>
@@ -552,6 +791,7 @@ type ItemLote = {
   codigo: string;
   descricao: string;
   serial: string;
+  ean: string;
   defeito: string;
 };
 
@@ -580,12 +820,12 @@ function NovaPecaModal({
     : [];
 
   const adicionarDoEstoque = (p: Part) => {
-    setItens((x) => [...x, { key: ++itemLoteSeq, codigo: p.code, descricao: p.name, serial: "", defeito: "" }]);
+    setItens((x) => [...x, { key: ++itemLoteSeq, codigo: p.code, descricao: p.name, serial: "", ean: "", defeito: "" }]);
     setBusca("");
   };
 
   const adicionarAvulsa = () => {
-    setItens((x) => [...x, { key: ++itemLoteSeq, codigo: "", descricao: "", serial: "", defeito: "" }]);
+    setItens((x) => [...x, { key: ++itemLoteSeq, codigo: "", descricao: "", serial: "", ean: "", defeito: "" }]);
   };
 
   const atualizarItem = (key: number, patch: Partial<ItemLote>) => {
@@ -607,7 +847,7 @@ function NovaPecaModal({
       const res = await api.post<{ ok: boolean; pedidoNumero: string; ids: number[] }>("/api/pecas-fornecedor/pecas/lote", {
         fornecedorId,
         rmaRelacionado,
-        itens: itens.map(({ codigo, descricao, serial, defeito }) => ({ codigo, descricao, serial, defeito })),
+        itens: itens.map(({ codigo, descricao, serial, ean, defeito }) => ({ codigo, descricao, serial, ean, defeito })),
       });
       onCriada(res.pedidoNumero);
     } catch (e) {
@@ -663,7 +903,7 @@ function NovaPecaModal({
           <span>{itens.length} selecionadas</span>
         </div>
         {itens.map((item, idx) => (
-          <div className="cart-row" key={item.key} style={{ gridTemplateColumns: "1fr 1fr 1fr 32px", alignItems: "start" }}>
+          <div className="cart-row" key={item.key} style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr 32px", alignItems: "start" }}>
             <span>
               <b>{item.codigo || `Peça ${idx + 1}`}</b>
               <input
@@ -678,6 +918,7 @@ function NovaPecaModal({
               onChange={(e) => atualizarItem(item.key, { serial: e.target.value })}
               placeholder="Serial (opcional)"
             />
+            <input value={item.ean} onChange={(e) => atualizarItem(item.key, { ean: e.target.value })} placeholder="EAN (opcional)" />
             <input
               value={item.defeito}
               onChange={(e) => atualizarItem(item.key, { defeito: e.target.value })}
@@ -706,16 +947,22 @@ function NovaPecaModal({
 
 function PedidoDetalheModal({
   numero,
+  isAdmin,
   onClose,
   onAtualizado,
+  onExcluido,
 }: {
   numero: string;
+  isAdmin: boolean;
   onClose: () => void;
   onAtualizado: () => void;
+  onExcluido: () => void;
 }) {
   const [pedido, setPedido] = useState<{ pedidoNumero: string; fornecedorNome: string; createdAt: string; pecas: PecaFornecedor[] } | null>(null);
   const [err, setErr] = useState("");
+  const [excluirErr, setExcluirErr] = useState("");
   const [pecaAberta, setPecaAberta] = useState<number | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
 
   const carregar = async () => {
     try {
@@ -725,6 +972,19 @@ function PedidoDetalheModal({
       setPedido(r);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Não foi possível carregar o pedido.");
+    }
+  };
+
+  const excluir = async () => {
+    if (!confirm(`Excluir o pedido ${numero} e todas as ${pedido?.pecas.length || 0} peças dele? Essa ação não pode ser desfeita.`)) return;
+    setExcluindo(true);
+    setExcluirErr("");
+    try {
+      await api.del(`/api/pecas-fornecedor/pedidos/${numero}`);
+      onExcluido();
+    } catch (e) {
+      setExcluirErr(e instanceof Error ? e.message : "Não foi possível excluir o pedido.");
+      setExcluindo(false);
     }
   };
 
@@ -786,7 +1046,13 @@ function PedidoDetalheModal({
             </tbody>
           </table>
         </div>
+        {excluirErr && <div className="error">{excluirErr}</div>}
         <div className="modal-actions">
+          {isAdmin && (
+            <button className="secondary" onClick={excluir} disabled={excluindo}>
+              <Trash2 size={16} /> {excluindo ? "Excluindo…" : "Excluir pedido"}
+            </button>
+          )}
           <button className="secondary" onClick={() => baixarPlanilha({ pedidoNumero: pedido.pedidoNumero })}>
             <FileSpreadsheet size={16} /> Gerar planilha
           </button>
