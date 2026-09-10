@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS pedidos_fornecedor (
   fornecedor_id INTEGER NOT NULL REFERENCES fornecedores(id),
   rma_relacionado TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'em_aberto'
-    CHECK(status IN ('em_aberto','registrado','em_analise','liberado','concluido')),
+    CHECK(status IN ('em_aberto','registrado','em_analise','revisar','liberado','concluido')),
   created_by INTEGER REFERENCES users(id),
   created_at TEXT NOT NULL,
   updated_by INTEGER REFERENCES users(id),
@@ -612,6 +612,39 @@ if (pecasFornecedorInfo && pecasFornecedorInfo.sql.includes("aguardando_envio"))
 // atualização a partir do schema antigo a coluna decisao só passa a
 // existir depois da recriação da tabela, logo acima.
 db.exec("CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_decisao ON pecas_fornecedor(decisao)");
+
+// pedidos_fornecedor existia sem a etapa "revisar" (entre em_analise e
+// liberado); precisa recriar porque o SQLite não altera CHECK de coluna
+// existente. Só amplia a lista de valores aceitos - nenhum pedido
+// existente muda de status com isso.
+const pedidosFornecedorInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='pedidos_fornecedor'").get();
+if (pedidosFornecedorInfo && !pedidosFornecedorInfo.sql.includes("'revisar'")) {
+  db.exec("BEGIN");
+  try {
+    db.exec(`
+      CREATE TABLE pedidos_fornecedor_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        numero TEXT NOT NULL UNIQUE,
+        fornecedor_id INTEGER NOT NULL REFERENCES fornecedores(id),
+        rma_relacionado TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'em_aberto'
+          CHECK(status IN ('em_aberto','registrado','em_analise','revisar','liberado','concluido')),
+        created_by INTEGER REFERENCES users(id),
+        created_at TEXT NOT NULL,
+        updated_by INTEGER REFERENCES users(id),
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO pedidos_fornecedor_new SELECT * FROM pedidos_fornecedor;
+      DROP TABLE pedidos_fornecedor;
+      ALTER TABLE pedidos_fornecedor_new RENAME TO pedidos_fornecedor;
+    `);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  db.exec("CREATE INDEX IF NOT EXISTS idx_pedidos_fornecedor_status ON pedidos_fornecedor(status)");
+}
 
 // fornecedores existia sem endereço; adiciona as colunas em bancos já
 // criados, sem mexer no que já estava cadastrado.
