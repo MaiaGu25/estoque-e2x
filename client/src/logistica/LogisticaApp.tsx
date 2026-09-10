@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowLeft, BarChart3, ClipboardList, History, LogOut, Map as MapIcon,
-  Menu, PackageSearch, RefreshCw, ShieldCheck, Warehouse, X,
+  Menu, PackageSearch, RefreshCw, ShieldCheck, ShoppingCart, Warehouse, X,
 } from "lucide-react";
 import { api } from "../api";
 import type { LogMapa, User } from "../types";
@@ -11,6 +11,7 @@ import ProdutosTab from "./ProdutosTab";
 import MovimentacoesTab from "./MovimentacoesTab";
 import HistoricoTab from "./HistoricoTab";
 import MapaTab from "./MapaTab";
+import VendasTab from "./VendasTab";
 
 const empty: LogMapa = { floors: [], racks: [] };
 
@@ -19,6 +20,7 @@ export default function LogisticaApp({ user, onLogout, onHome }: { user: User; o
   const tabs = [
     ["painel", "Painel", BarChart3],
     ["produtos", "Produtos", PackageSearch],
+    ["vendas", "Vendas", ShoppingCart],
     ["movimentar", "Movimentar", ClipboardList],
     ["historico", "Histórico", History],
     ["mapa", "Mapa do Galpão", MapIcon],
@@ -107,6 +109,7 @@ export default function LogisticaApp({ user, onLogout, onHome }: { user: User; o
 
         {tab === "painel" && <DashboardTab refreshKey={refreshKey} />}
         {tab === "produtos" && <ProdutosTab refreshKey={refreshKey} isAdmin={isAdmin} onAtualizado={recarregar} />}
+        {tab === "vendas" && <VendasTab refreshKey={refreshKey} isAdmin={isAdmin} usuario={user} onAtualizado={recarregar} />}
         {tab === "movimentar" && <MovimentacoesTab mapa={mapa} onRegistrado={recarregar} usuario={user} />}
         {tab === "historico" && <HistoricoTab refreshKey={refreshKey} />}
         {tab === "mapa" && <MapaTab mapa={mapa} isAdmin={isAdmin} onAtualizado={recarregar} />}

@@ -1,10 +1,80 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { api } from "../api";
 import type { LogMapa, LogProduto } from "../types";
-import { Field, fmt } from "./ui";
+import { Empty, Field, fmt } from "./ui";
 
 type PosicaoResultado = { id: number; code: string; name: string };
+
+export type PosicaoEstoque = {
+  position_id: number;
+  position_code: string;
+  position_name: string;
+  side_code: string;
+  side_name: string;
+  rack_name: string;
+  quantity: number;
+};
+
+// Mostra só onde o produto já está guardado (com o saldo de cada posição),
+// pra escolher clicando - sem precisar saber de cor os códigos de montante,
+// lado e prateleira. Se só tem um lugar, já seleciona sozinho. Usada na
+// Saída/Ajuste (montante da posição a mexer) e no fechamento de orçamentos
+// de venda (de onde tirar cada item vendido).
+export function LocalizacaoAtual({
+  produtoId,
+  selecionadaId,
+  onSelecionar,
+  vazio,
+}: {
+  produtoId: number;
+  selecionadaId: number | null;
+  onSelecionar: (p: PosicaoEstoque) => void;
+  vazio: string;
+}) {
+  const [posicoes, setPosicoes] = useState<PosicaoEstoque[] | null>(null);
+
+  useEffect(() => {
+    setPosicoes(null);
+    api.get<{ posicoes: PosicaoEstoque[] }>(`/api/logistica/produtos/${produtoId}`).then((r) => {
+      setPosicoes(r.posicoes);
+      if (r.posicoes.length === 1) onSelecionar(r.posicoes[0]);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [produtoId]);
+
+  if (posicoes === null) return <p className="cart-empty">Carregando localização…</p>;
+  if (!posicoes.length) return <Empty text={vazio} />;
+
+  return (
+    <div className="cart">
+      {posicoes.map((p) => (
+        <button
+          key={p.position_id}
+          className="cart-row"
+          style={{
+            gridTemplateColumns: "1fr auto",
+            width: "100%",
+            textAlign: "left",
+            background: selecionadaId === p.position_id ? "#edf8f2" : undefined,
+          }}
+          onClick={() => onSelecionar(p)}
+        >
+          <span>
+            <b>
+              {p.rack_name} · {p.side_name} ({p.side_code})
+            </b>
+            <small>
+              {p.position_code}
+              {p.position_name ? ` - ${p.position_name}` : ""}
+            </small>
+          </span>
+          <b>{fmt(p.quantity)}</b>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // Seletor em cascata (montante -> lado -> prateleira). Simples de qualquer
 // pessoa entender, e as posições que dá pra escolher já vêm sempre dos

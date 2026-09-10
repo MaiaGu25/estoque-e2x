@@ -263,6 +263,7 @@ export type LogProduto = {
   category: string;
   unit: string;
   minimum_stock: number;
+  sale_price: number;
   notes: string;
   active: number;
   saldo_total: number;
@@ -363,4 +364,38 @@ export type LogDashboard = {
   transferenciasRecentes: LogMovimentoResumo[];
   ajustesRecentes: LogMovimentoResumo[];
   ultimasMovimentacoes: LogMovimentoResumo[];
+};
+
+export type LogOrcamentoStatus = "aberto" | "aguardando_aprovacao" | "fechado" | "cancelado";
+
+export type LogOrcamento = {
+  id: number;
+  numero: string;
+  customer_name: string;
+  customer_contact: string;
+  status: LogOrcamentoStatus;
+  subtotal: number;
+  discount_total: number;
+  total: number;
+  notes: string;
+  responsible: string;
+  approved_by: number | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+};
+
+export type LogOrcamentoItem = {
+  id: number;
+  quote_id: number;
+  product_id: number;
+  quantity: number;
+  unit_price: number;
+  discount_pct: number;
+  line_total: number;
+  product_code: string;
+  product_name: string;
+  product_unit: string;
+  product_notes: string;
 };
