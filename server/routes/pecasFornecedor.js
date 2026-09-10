@@ -1,6 +1,6 @@
 const express = require("express");
 const { db, transaction } = require("../db");
-const { requireAuth } = require("../auth");
+const { requireAuth, requireAdmin } = require("../auth");
 const { nowStamp } = require("../util");
 const { broadcast } = require("../realtime");
 const { gerarPlanilha } = require("../xlsx");
@@ -23,21 +23,65 @@ function registrarEvento(pecaId, texto, user) {
 
 // ---- Fornecedores ----
 
+function comContatos(fornecedores) {
+  if (!fornecedores.length) return fornecedores;
+  const ids = fornecedores.map((f) => f.id);
+  const contatos = db
+    .prepare(`SELECT * FROM fornecedor_contatos WHERE fornecedor_id IN (${ids.map(() => "?").join(",")}) ORDER BY id`)
+    .all(...ids);
+  return fornecedores.map((f) => ({ ...f, contatos: contatos.filter((c) => c.fornecedor_id === f.id) }));
+}
+
 router.get("/fornecedores", (req, res) => {
   const fornecedores = db.prepare("SELECT * FROM fornecedores WHERE ativo = 1 ORDER BY nome COLLATE NOCASE").all();
-  res.json({ fornecedores });
+  res.json({ fornecedores: comContatos(fornecedores) });
 });
 
 router.post("/fornecedores", (req, res) => {
   const b = req.body || {};
   const nome = String(b.nome || "").trim();
   if (!nome) return res.status(400).json({ error: "Digite o nome do fornecedor." });
-  try {
+  const contatos = (Array.isArray(b.contatos) ? b.contatos : [])
+    .map((c) => ({
+      nome: String(c?.nome || "").trim(),
+      telefone: String(c?.telefone || "").trim(),
+      email: String(c?.email || "").trim(),
+    }))
+    .filter((c) => c.nome || c.telefone || c.email);
+
+  const run = transaction(() => {
+    const now = nowStamp();
     const result = db
-      .prepare("INSERT INTO fornecedores (nome,identificacao,contato) VALUES (?,?,?)")
-      .run(nome, String(b.identificacao || "").trim(), String(b.contato || "").trim());
+      .prepare(
+        `INSERT INTO fornecedores (nome,identificacao,endereco,numero,cep,cidade,estado)
+         VALUES (?,?,?,?,?,?,?)`
+      )
+      .run(
+        nome,
+        String(b.identificacao || "").trim(),
+        String(b.endereco || "").trim(),
+        String(b.numero || "").trim(),
+        String(b.cep || "").trim(),
+        String(b.cidade || "").trim(),
+        String(b.estado || "").trim()
+      );
+    const fornecedorId = result.lastInsertRowid;
+    for (const contato of contatos) {
+      db.prepare("INSERT INTO fornecedor_contatos (fornecedor_id,nome,telefone,email,created_at) VALUES (?,?,?,?,?)").run(
+        fornecedorId,
+        contato.nome,
+        contato.telefone,
+        contato.email,
+        now
+      );
+    }
+    return fornecedorId;
+  });
+
+  try {
+    const id = run();
     broadcast("pecasFornecedor");
-    res.json({ ok: true, id: result.lastInsertRowid });
+    res.json({ ok: true, id });
   } catch (error) {
     res.status(400).json({ error: "Já existe um fornecedor com esse nome." });
   }
@@ -51,7 +95,7 @@ router.patch("/fornecedores/:id", (req, res) => {
   const b = req.body || {};
   const fields = [];
   const values = [];
-  for (const key of ["nome", "identificacao", "contato"]) {
+  for (const key of ["nome", "identificacao", "contato", "endereco", "numero", "cep", "cidade", "estado"]) {
     if (typeof b[key] === "string") {
       fields.push(`${key} = ?`);
       values.push(b[key].trim());
@@ -71,6 +115,35 @@ router.patch("/fornecedores/:id", (req, res) => {
   } catch (error) {
     res.status(400).json({ error: "Já existe um fornecedor com esse nome." });
   }
+});
+
+router.post("/fornecedores/:id/contatos", (req, res) => {
+  const id = Number(req.params.id);
+  const fornecedor = db.prepare("SELECT id FROM fornecedores WHERE id = ?").get(id);
+  if (!fornecedor) return res.status(404).json({ error: "Fornecedor não encontrado." });
+
+  const b = req.body || {};
+  const nome = String(b.nome || "").trim();
+  const telefone = String(b.telefone || "").trim();
+  const email = String(b.email || "").trim();
+  if (!nome && !telefone && !email) return res.status(400).json({ error: "Preencha ao menos um dado do contato." });
+
+  const result = db
+    .prepare("INSERT INTO fornecedor_contatos (fornecedor_id,nome,telefone,email,created_at) VALUES (?,?,?,?,?)")
+    .run(id, nome, telefone, email, nowStamp());
+  broadcast("pecasFornecedor");
+  res.json({ ok: true, id: result.lastInsertRowid });
+});
+
+router.delete("/fornecedores/:id/contatos/:contatoId", (req, res) => {
+  const id = Number(req.params.id);
+  const contatoId = Number(req.params.contatoId);
+  const contato = db.prepare("SELECT id FROM fornecedor_contatos WHERE id = ? AND fornecedor_id = ?").get(contatoId, id);
+  if (!contato) return res.status(404).json({ error: "Contato não encontrado." });
+
+  db.prepare("DELETE FROM fornecedor_contatos WHERE id = ?").run(contatoId);
+  broadcast("pecasFornecedor");
+  res.json({ ok: true });
 });
 
 // ---- Peças ----
@@ -138,6 +211,7 @@ router.post("/pecas/lote", (req, res) => {
     codigo: String(item?.codigo || "").trim(),
     serial: String(item?.serial || "").trim(),
     descricao: String(item?.descricao || "").trim(),
+    ean: String(item?.ean || "").trim(),
     defeito: String(item?.defeito || "").trim(),
   }));
   const semDescricao = limpos.findIndex((item) => !item.descricao);
@@ -155,9 +229,9 @@ router.post("/pecas/lote", (req, res) => {
         .prepare(
           `INSERT INTO pecas_fornecedor
            (codigo,serial,descricao,ean,marca,defeito,fornecedor_id,status,rma_relacionado,observacoes,pedido_numero,created_by,created_at,updated_by,updated_at)
-           VALUES (?,?,?,'','',?,?,'aguardando_envio',?,'',?,?,?,?,?)`
+           VALUES (?,?,?,?,'',?,?,'aguardando_envio',?,'',?,?,?,?,?)`
         )
-        .run(item.codigo, item.serial, item.descricao, item.defeito, fornecedorId, rmaRelacionado, pedidoNumero, req.user.id, now, req.user.id, now);
+        .run(item.codigo, item.serial, item.descricao, item.ean, item.defeito, fornecedorId, rmaRelacionado, pedidoNumero, req.user.id, now, req.user.id, now);
       const id = result.lastInsertRowid;
       registrarEvento(id, "Peça cadastrada, aguardando envio ao fornecedor.", req.user);
       ids.push(id);
@@ -225,6 +299,23 @@ router.get("/pedidos/:numero", (req, res) => {
     createdAt: pecas[0].created_at,
     pecas,
   });
+});
+
+router.delete("/pedidos/:numero", requireAdmin, (req, res) => {
+  const numero = req.params.numero;
+  const pecas = db.prepare("SELECT id FROM pecas_fornecedor WHERE pedido_numero = ?").all(numero);
+  if (!pecas.length) return res.status(404).json({ error: "Pedido não encontrado." });
+
+  const run = transaction(() => {
+    for (const peca of pecas) {
+      db.prepare("DELETE FROM pecas_fornecedor_eventos WHERE peca_id = ?").run(peca.id);
+    }
+    db.prepare("DELETE FROM pecas_fornecedor WHERE pedido_numero = ?").run(numero);
+  });
+
+  run();
+  broadcast("pecasFornecedor");
+  res.json({ ok: true });
 });
 
 router.get("/planilha", async (req, res) => {

@@ -243,7 +243,24 @@ CREATE TABLE IF NOT EXISTS fornecedores (
   nome TEXT NOT NULL UNIQUE,
   identificacao TEXT NOT NULL DEFAULT '',
   contato TEXT NOT NULL DEFAULT '',
+  endereco TEXT NOT NULL DEFAULT '',
+  numero TEXT NOT NULL DEFAULT '',
+  cep TEXT NOT NULL DEFAULT '',
+  cidade TEXT NOT NULL DEFAULT '',
+  estado TEXT NOT NULL DEFAULT '',
   ativo INTEGER NOT NULL DEFAULT 1
+);
+
+-- Contatos nomeados do fornecedor (podem ser pessoas diferentes, cada
+-- uma com seu telefone/email) - substitui o campo único "contato" livre
+-- pra quem cadastra a partir de agora.
+CREATE TABLE IF NOT EXISTS fornecedor_contatos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fornecedor_id INTEGER NOT NULL REFERENCES fornecedores(id),
+  nome TEXT NOT NULL DEFAULT '',
+  telefone TEXT NOT NULL DEFAULT '',
+  email TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS pecas_fornecedor (
@@ -277,6 +294,7 @@ CREATE TABLE IF NOT EXISTS pecas_fornecedor_eventos (
 CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_status ON pecas_fornecedor(status);
 CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_created_at ON pecas_fornecedor(created_at);
 CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_eventos_peca ON pecas_fornecedor_eventos(peca_id);
+CREATE INDEX IF NOT EXISTS idx_fornecedor_contatos_fornecedor ON fornecedor_contatos(fornecedor_id);
 
 -- Módulo "Logística": estoque de galpão totalmente independente do Estoque
 -- geral (parts/movements/orders) - nenhuma tabela ou saldo é compartilhado.
@@ -473,6 +491,14 @@ if (!columnExists("pecas_fornecedor", "pedido_numero")) {
 // dá um número sintético para cada uma virar um "pedido" de 1 item.
 db.exec("UPDATE pecas_fornecedor SET pedido_numero = 'LEG-' || id WHERE pedido_numero = ''");
 db.exec("CREATE INDEX IF NOT EXISTS idx_pecas_fornecedor_pedido ON pecas_fornecedor(pedido_numero)");
+
+// fornecedores existia sem endereço; adiciona as colunas em bancos já
+// criados, sem mexer no que já estava cadastrado.
+for (const coluna of ["endereco", "numero", "cep", "cidade", "estado"]) {
+  if (!columnExists("fornecedores", coluna)) {
+    db.exec(`ALTER TABLE fornecedores ADD COLUMN ${coluna} TEXT NOT NULL DEFAULT ''`);
+  }
+}
 
 // parts existia sem saldo reservado; adiciona a coluna em bancos já criados.
 if (!columnExists("parts", "reserved_quantity")) {
