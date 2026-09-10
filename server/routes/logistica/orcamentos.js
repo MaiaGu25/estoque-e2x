@@ -61,12 +61,16 @@ function prepararItens(itensBrutos) {
 }
 
 router.get("/", (req, res) => {
-  const { status, busca } = req.query;
+  const { status, busca, criadoPor } = req.query;
   const where = [];
   const params = [];
   if (status) {
     where.push("status = ?");
     params.push(String(status));
+  }
+  if (criadoPor) {
+    where.push("created_by = ?");
+    params.push(Number(criadoPor));
   }
   if (busca) {
     where.push("(numero LIKE ? OR customer_name LIKE ?)");

@@ -51,6 +51,7 @@ export default function VendasTab({
   const [descontoLimite, setDescontoLimite] = useState(10);
   const [status, setStatus] = useState("");
   const [busca, setBusca] = useState("");
+  const [apenasMeus, setApenasMeus] = useState(true);
   const [modalNovo, setModalNovo] = useState(false);
   const [abertoId, setAbertoId] = useState<number | null>(null);
 
@@ -58,6 +59,7 @@ export default function VendasTab({
     const params = new URLSearchParams();
     if (status) params.set("status", status);
     if (busca) params.set("busca", busca);
+    if (apenasMeus) params.set("criadoPor", String(usuario.id));
     const r = await api.get<{ orcamentos: LogOrcamento[]; descontoLimiteSemAprovacao: number }>(`/api/logistica/orcamentos?${params.toString()}`);
     setOrcamentos(r.orcamentos);
     setDescontoLimite(r.descontoLimiteSemAprovacao);
@@ -66,10 +68,18 @@ export default function VendasTab({
   useEffect(() => {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey, status]);
+  }, [refreshKey, status, apenasMeus]);
 
   return (
     <section>
+      <div className="segmented" style={{ maxWidth: 320 }}>
+        <button className={apenasMeus ? "active in" : ""} onClick={() => setApenasMeus(true)}>
+          Meus orçamentos
+        </button>
+        <button className={!apenasMeus ? "active in" : ""} onClick={() => setApenasMeus(false)}>
+          Todos
+        </button>
+      </div>
       <div className="filters">
         <div>
           <label>Buscar</label>

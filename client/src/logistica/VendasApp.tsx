@@ -1,57 +1,35 @@
-import { useEffect, useState } from "react";
-import {
-  ArrowLeft, BarChart3, ClipboardList, History, LogOut, Map as MapIcon,
-  Menu, PackageSearch, RefreshCw, ShieldCheck, Warehouse, X,
-} from "lucide-react";
-import { api } from "../api";
-import type { LogMapa, User } from "../types";
+import { useState } from "react";
+import { ArrowLeft, ClipboardList, LogOut, Menu, RefreshCw, ShieldCheck, ShoppingCart, Search, X } from "lucide-react";
+import type { User } from "../types";
 import { useRealtime } from "../useRealtime";
-import DashboardTab from "./DashboardTab";
-import ProdutosTab from "./ProdutosTab";
-import MovimentacoesTab from "./MovimentacoesTab";
-import HistoricoTab from "./HistoricoTab";
-import MapaTab from "./MapaTab";
+import ConsultaTab from "./ConsultaTab";
+import VendasTab from "./VendasTab";
 
-const empty: LogMapa = { floors: [], racks: [] };
-
-export default function LogisticaApp({ user, onLogout, onHome }: { user: User; onLogout: () => void; onHome: () => void }) {
+export default function VendasApp({ user, onLogout, onHome }: { user: User; onLogout: () => void; onHome: () => void }) {
   const isAdmin = user.role === "admin";
   const tabs = [
-    ["painel", "Painel", BarChart3],
-    ["produtos", "Produtos", PackageSearch],
-    ["movimentar", "Movimentar", ClipboardList],
-    ["historico", "Histórico", History],
-    ["mapa", "Mapa do Galpão", MapIcon],
+    ["consulta", "Consulta", Search],
+    ["orcamentos", "Orçamentos", ClipboardList],
   ] as const;
 
-  const [tab, setTab] = useState<string>("painel");
+  const [tab, setTab] = useState<string>("consulta");
   const [mobile, setMobile] = useState(false);
-  const [mapa, setMapa] = useState<LogMapa>(empty);
   const [refreshKey, setRefreshKey] = useState(0);
   const title = tabs.find((t) => t[0] === tab)?.[1];
 
   const recarregar = () => setRefreshKey((k) => k + 1);
   useRealtime("logistica", recarregar);
 
-  const carregarMapa = async () => {
-    const r = await api.get<LogMapa>("/api/logistica/mapa");
-    setMapa(r);
-  };
-
-  useEffect(() => {
-    carregarMapa();
-  }, [refreshKey]);
-
   return (
     <div className="app-shell">
       <aside className={mobile ? "sidebar open" : "sidebar"}>
         <div className="brand">
           <div className="brand-mark">
-            <Warehouse size={22} />
+            <ShoppingCart size={22} />
           </div>
           <div>
-            <strong>LOGÍSTICA</strong>
-            <span>Estoque do galpão</span>
+            <strong>VENDAS</strong>
+            <span>Consulta e orçamentos</span>
           </div>
           <button className="icon-btn close-nav" onClick={() => setMobile(false)}>
             <X />
@@ -95,7 +73,7 @@ export default function LogisticaApp({ user, onLogout, onHome }: { user: User; o
             <Menu />
           </button>
           <div>
-            <p>Logística</p>
+            <p>Vendas</p>
             <h1>{title}</h1>
           </div>
           <div className="header-actions">
@@ -105,11 +83,8 @@ export default function LogisticaApp({ user, onLogout, onHome }: { user: User; o
           </div>
         </header>
 
-        {tab === "painel" && <DashboardTab refreshKey={refreshKey} />}
-        {tab === "produtos" && <ProdutosTab refreshKey={refreshKey} isAdmin={isAdmin} onAtualizado={recarregar} />}
-        {tab === "movimentar" && <MovimentacoesTab mapa={mapa} onRegistrado={recarregar} usuario={user} />}
-        {tab === "historico" && <HistoricoTab refreshKey={refreshKey} />}
-        {tab === "mapa" && <MapaTab mapa={mapa} isAdmin={isAdmin} onAtualizado={recarregar} />}
+        {tab === "consulta" && <ConsultaTab refreshKey={refreshKey} />}
+        {tab === "orcamentos" && <VendasTab refreshKey={refreshKey} isAdmin={isAdmin} usuario={user} onAtualizado={recarregar} />}
       </main>
       {mobile && <div className="scrim" onClick={() => setMobile(false)} />}
     </div>
