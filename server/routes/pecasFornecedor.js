@@ -150,7 +150,6 @@ router.post("/pecas/lote", (req, res) => {
   const run = transaction(() => {
     const now = nowStamp();
     const ids = [];
-    let baixasAutomaticas = 0;
     for (const item of limpos) {
       const result = db
         .prepare(
@@ -160,32 +159,16 @@ router.post("/pecas/lote", (req, res) => {
         )
         .run(item.codigo, item.serial, item.descricao, item.defeito, fornecedorId, rmaRelacionado, pedidoNumero, req.user.id, now, req.user.id, now);
       const id = result.lastInsertRowid;
-
-      let textoEvento = "Peça cadastrada, aguardando envio ao fornecedor.";
-      if (item.codigo) {
-        const part = db.prepare("SELECT id, quantity FROM parts WHERE code = ? AND active = 1").get(item.codigo);
-        if (part) {
-          const next = part.quantity - 1;
-          db.prepare("UPDATE parts SET quantity = ?, updated_at = ? WHERE id = ?").run(next, now, part.id);
-          db.prepare(
-            `INSERT INTO movements (part_id,order_id,type,quantity,previous_balance,new_balance,reason,responsible,notes,created_by,created_at)
-             VALUES (?,NULL,'SAIDA',1,?,?,'RMA',?,?,?,?)`
-          ).run(part.id, part.quantity, next, req.user.name, `Pedido ${pedidoNumero} · ${item.descricao} · Fornecedor: ${fornecedor.nome}`, req.user.id, now);
-          baixasAutomaticas++;
-          textoEvento += ` Saída automática registrada no estoque (${item.codigo}).`;
-        }
-      }
-      registrarEvento(id, textoEvento, req.user);
+      registrarEvento(id, "Peça cadastrada, aguardando envio ao fornecedor.", req.user);
       ids.push(id);
     }
-    return { ids, baixasAutomaticas };
+    return { ids };
   });
 
   try {
-    const { ids, baixasAutomaticas } = run();
+    const { ids } = run();
     broadcast("pecasFornecedor");
-    if (baixasAutomaticas) broadcast("estoque");
-    res.json({ ok: true, pedidoNumero, ids, baixasAutomaticas, semCorrespondencia: ids.length - baixasAutomaticas });
+    res.json({ ok: true, pedidoNumero, ids });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível cadastrar as peças." });
   }
