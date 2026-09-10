@@ -135,7 +135,17 @@ export default function ProdutosTab({
 }
 
 function NovoProdutoModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [v, setV] = useState({ code: "", name: "", description: "", category: "", unit: "UN", minimumStock: 0, notes: "", initialQuantity: 0 });
+  const [v, setV] = useState({
+    code: "",
+    name: "",
+    description: "",
+    category: "",
+    unit: "UN",
+    minimumStock: 0,
+    salePrice: 0,
+    notes: "",
+    initialQuantity: 0,
+  });
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -171,6 +181,9 @@ function NovoProdutoModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         </Field>
         <Field label="Estoque mínimo">
           <input type="number" min="0" value={v.minimumStock} onChange={(e) => setV({ ...v, minimumStock: Number(e.target.value) })} />
+        </Field>
+        <Field label="Preço de venda">
+          <input type="number" min="0" step="0.01" value={v.salePrice} onChange={(e) => setV({ ...v, salePrice: Number(e.target.value) })} />
         </Field>
         <Field label="Quantidade encontrada no físico (opcional)">
           <input type="number" min="0" value={v.initialQuantity} onChange={(e) => setV({ ...v, initialQuantity: Number(e.target.value) })} />
@@ -256,7 +269,12 @@ function DetalheProdutoModal({
   const { produto, posicoes, movimentacoes } = dados;
 
   return (
-    <Modal title={`${produto.code} · ${produto.name}`} subtitle={`Categoria: ${produto.category} · Saldo total: ${fmt(produto.saldo_total)} ${produto.unit}`} onClose={onClose} wide>
+    <Modal
+      title={`${produto.code} · ${produto.name}`}
+      subtitle={`Categoria: ${produto.category} · Saldo total: ${fmt(produto.saldo_total)} ${produto.unit} · Preço: R$ ${fmt(produto.sale_price)}`}
+      onClose={onClose}
+      wide
+    >
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16 }}>
         <SituacaoBadge situacao={produto.situacao} />
         {isAdmin && (
@@ -287,6 +305,15 @@ function DetalheProdutoModal({
               type="number"
               defaultValue={produto.minimum_stock}
               onBlur={(e) => Number(e.target.value) !== produto.minimum_stock && salvarCampo({ minimumStock: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Preço de venda">
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue={produto.sale_price}
+              onBlur={(e) => Number(e.target.value) !== produto.sale_price && salvarCampo({ salePrice: Number(e.target.value) })}
             />
           </Field>
         </div>

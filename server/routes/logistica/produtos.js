@@ -129,8 +129,8 @@ router.post("/", (req, res) => {
   try {
     const result = db
       .prepare(
-        `INSERT INTO logistics_products (code,name,description,category,unit,minimum_stock,notes,active,created_by,created_at,updated_by,updated_at)
-         VALUES (?,?,?,?,?,?,?,1,?,?,?,?)`
+        `INSERT INTO logistics_products (code,name,description,category,unit,minimum_stock,sale_price,notes,active,created_by,created_at,updated_by,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?)`
       )
       .run(
         code,
@@ -139,6 +139,7 @@ router.post("/", (req, res) => {
         String(b.category || "").trim() || "Geral",
         String(b.unit || "").trim() || "UN",
         Number(b.minimumStock) || 0,
+        Number(b.salePrice) || 0,
         String(b.notes || "").trim(),
         req.user.id,
         now,
@@ -212,6 +213,12 @@ router.patch("/:id", requireAdmin, (req, res) => {
     depois.minimum_stock = Number(b.minimumStock);
     fields.push("minimum_stock = ?");
     values.push(Number(b.minimumStock) || 0);
+  }
+  if (b.salePrice !== undefined && Number(b.salePrice) !== produto.sale_price) {
+    antes.sale_price = produto.sale_price;
+    depois.sale_price = Number(b.salePrice);
+    fields.push("sale_price = ?");
+    values.push(Number(b.salePrice) || 0);
   }
   if (typeof b.active === "boolean" && (b.active ? 1 : 0) !== produto.active) {
     antes.active = produto.active;

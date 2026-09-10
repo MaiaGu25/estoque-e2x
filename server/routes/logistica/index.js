@@ -9,5 +9,6 @@ router.use("/mapa", require("./mapa"));
 router.use("/movimentacoes", require("./movimentacoes"));
 router.use("/historico", require("./historico"));
 router.use("/dashboard", require("./dashboard"));
+router.use("/orcamentos", require("./orcamentos"));
 
 module.exports = router;

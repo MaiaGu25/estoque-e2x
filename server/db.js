@@ -288,6 +288,7 @@ CREATE TABLE IF NOT EXISTS logistics_products (
   category TEXT NOT NULL DEFAULT 'Geral',
   unit TEXT NOT NULL DEFAULT 'UN',
   minimum_stock REAL NOT NULL DEFAULT 0,
+  sale_price REAL NOT NULL DEFAULT 0,
   notes TEXT NOT NULL DEFAULT '',
   active INTEGER NOT NULL DEFAULT 1,
   created_by INTEGER REFERENCES users(id),
@@ -526,6 +527,12 @@ if (!columnExists("logistics_racks", "is_holding_area")) {
   db.exec("ALTER TABLE logistics_racks ADD COLUMN is_holding_area INTEGER NOT NULL DEFAULT 0");
 }
 
+// logistics_products existia sem preço de venda; adiciona a coluna em
+// bancos já criados, sem mexer no que já estava cadastrado.
+if (!columnExists("logistics_products", "sale_price")) {
+  db.exec("ALTER TABLE logistics_products ADD COLUMN sale_price REAL NOT NULL DEFAULT 0");
+}
+
 let andarPadrao = db.prepare("SELECT id FROM logistics_floors ORDER BY display_order, id LIMIT 1").get();
 if (!andarPadrao) {
   const now = nowStamp();
@@ -566,6 +573,46 @@ if (!areaNaoOrganizada) {
 // atualização a partir do schema sem andares a coluna floor_id só passa a
 // existir depois do ALTER TABLE logo acima.
 db.exec("CREATE INDEX IF NOT EXISTS idx_logistics_racks_floor ON logistics_racks(floor_id)");
+
+// Orçamento é uma simulação de venda: fica salvo (cliente, itens, desconto)
+// sem mexer em estoque nenhum. Só quando é "fechado" que vira uma saída de
+// verdade nas posições escolhidas. Desconto acima do limite deixa o
+// orçamento como 'aguardando_aprovacao' até um admin liberar.
+db.exec(`
+CREATE TABLE IF NOT EXISTS sales_quotes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero TEXT NOT NULL UNIQUE,
+  customer_name TEXT NOT NULL DEFAULT '',
+  customer_contact TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('aberto','aguardando_aprovacao','fechado','cancelado')) DEFAULT 'aberto',
+  subtotal REAL NOT NULL DEFAULT 0,
+  discount_total REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  notes TEXT NOT NULL DEFAULT '',
+  responsible TEXT NOT NULL DEFAULT '',
+  approved_by INTEGER REFERENCES users(id),
+  approved_at TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  closed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sales_quote_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  quote_id INTEGER NOT NULL REFERENCES sales_quotes(id),
+  product_id INTEGER NOT NULL REFERENCES logistics_products(id),
+  quantity REAL NOT NULL,
+  unit_price REAL NOT NULL,
+  discount_pct REAL NOT NULL DEFAULT 0,
+  line_total REAL NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sales_quotes_status ON sales_quotes(status);
+CREATE INDEX IF NOT EXISTS idx_sales_quote_items_quote ON sales_quote_items(quote_id);
+`);
 
 function getMeta(key) {
   const row = db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key);
