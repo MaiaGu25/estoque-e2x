@@ -155,7 +155,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
           </label>
           <label className="field">
             <span>Senha temporária</span>
-            <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 6 caracteres" />
+            <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 8 caracteres" />
           </label>
           <label className="field">
             <span>Papel</span>
@@ -170,7 +170,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <button className="secondary" onClick={onClose}>
             Cancelar
           </button>
-          <button className="primary" disabled={saving || !username || !name || password.length < 6} onClick={save}>
+          <button className="primary" disabled={saving || !username || !name || password.length < 8} onClick={save}>
             {saving ? "Criando…" : "Criar usuário"}
           </button>
         </div>
@@ -211,14 +211,14 @@ function ResetPasswordModal({ user, onClose, onDone }: { user: User; onClose: ()
         </div>
         <label className="field">
           <span>Nova senha temporária</span>
-          <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 6 caracteres" />
+          <input type="text" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 8 caracteres" />
         </label>
         {err && <div className="error">{err}</div>}
         <div className="modal-actions">
           <button className="secondary" onClick={onClose}>
             Cancelar
           </button>
-          <button className="primary" disabled={saving || password.length < 6} onClick={save}>
+          <button className="primary" disabled={saving || password.length < 8} onClick={save}>
             {saving ? "Salvando…" : "Redefinir"}
           </button>
         </div>

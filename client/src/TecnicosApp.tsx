@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Boxes, ChevronRight,
+  Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Boxes, CheckSquare, ChevronRight,
   ClipboardList, Cpu, History, LayoutDashboard, LogOut, Menu, Plus, RefreshCw,
   ShieldCheck, TriangleAlert, X,
 } from "lucide-react";
 import { api } from "./api";
 import type { TecConfig, TecConfigItem, TecItem, TecMovimento, TecnicosData, User } from "./types";
 import { useRealtime } from "./useRealtime";
+import InventarioTab from "./tecnicos/InventarioTab";
 
 const empty: TecnicosData = { itens: [], configuracoes: [], configItens: [], movimentos: [] };
 const fmt = (n: number) => new Intl.NumberFormat("pt-BR").format(n);
+const fmtSinal = (n: number) => new Intl.NumberFormat("pt-BR", { signDisplay: "exceptZero" }).format(n);
 const dt = (s: string) => new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
 function status(qtd: number, limite: number): ["CRITICO" | "BAIXO" | "NORMAL", string] {
@@ -24,6 +26,7 @@ export default function TecnicosApp({ user, onLogout, onHome }: { user: User; on
     ["estoque", "Estoque", Boxes],
     ["maquinas", "Máquinas", Cpu],
     ["configuracoes", "Configurações", ClipboardList],
+    ["inventario", "Inventário", CheckSquare],
     ["historico", "Histórico", History],
   ] as const;
 
@@ -287,6 +290,7 @@ export default function TecnicosApp({ user, onLogout, onHome }: { user: User; on
                 })}
               </section>
             )}
+            {tab === "inventario" && <InventarioTab onEstoqueAlterado={() => load()} />}
             {tab === "historico" && (
               <Panel title="Histórico de movimentações" subtitle={`${data.movimentos.length} registros`}>
                 <TecMovimentosTable rows={data.movimentos} />
@@ -407,21 +411,25 @@ function TecMovimentosTable({ rows }: { rows: TecMovimento[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((m) => (
-            <tr key={m.id}>
-              <td>{dt(m.created_at)}</td>
-              <td>
-                <span className={m.tipo === "ENTRADA" ? "pill in" : "pill out"}>{m.tipo}</span>
-              </td>
-              <td>{m.alvo}</td>
-              <td className="num">{fmt(m.quantidade)}</td>
-              <td>
-                {m.motivo}
-                {m.detalhe && <small style={{ display: "block", color: "#889a92" }}>{m.detalhe}</small>}
-              </td>
-              <td>{m.responsible}</td>
-            </tr>
-          ))}
+          {rows.map((m) => {
+            const isAjusteInventario = m.tipo === "AJUSTE_INVENTARIO";
+            const entrada = m.tipo === "ENTRADA" || (isAjusteInventario && m.quantidade > 0);
+            return (
+              <tr key={m.id}>
+                <td>{dt(m.created_at)}</td>
+                <td>
+                  <span className={entrada ? "pill in" : "pill out"}>{isAjusteInventario ? "AJUSTE INVENTÁRIO" : m.tipo}</span>
+                </td>
+                <td>{m.alvo}</td>
+                <td className="num">{isAjusteInventario ? fmtSinal(m.quantidade) : fmt(m.quantidade)}</td>
+                <td>
+                  {m.motivo}
+                  {m.detalhe && <small style={{ display: "block", color: "#889a92" }}>{m.detalhe}</small>}
+                </td>
+                <td>{m.responsible}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

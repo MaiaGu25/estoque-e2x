@@ -7,6 +7,8 @@ const { broadcast } = require("../realtime");
 const router = express.Router();
 router.use(requireAuth);
 
+router.use("/inventarios", require("./tecnicosInventario"));
+
 function registrar(tipo, alvo, quantidade, motivo, detalhe, user) {
   db.prepare(
     "INSERT INTO tec_movimentos (tipo,alvo,quantidade,motivo,detalhe,responsible,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)"
