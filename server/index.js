@@ -29,6 +29,7 @@ const rmaRoutes = require("./routes/rma");
 const pecasFornecedorRoutes = require("./routes/pecasFornecedor");
 const reservadosRoutes = require("./routes/reservados");
 const logisticaRoutes = require("./routes/logistica");
+const centralFotosRoutes = require("./routes/centralFotos");
 
 const app = express();
 app.disable("x-powered-by");
@@ -36,8 +37,6 @@ app.disable("x-powered-by");
 // política restritiva - os outros cabeçalhos (X-Content-Type-Options,
 // X-Frame-Options, etc.) já ajudam sem risco de quebrar o app.
 app.use(helmet({ contentSecurityPolicy: false }));
-// Limite maior por causa das fotos (base64) da Central de Testes.
-app.use(express.json({ limit: "12mb" }));
 app.use(cookieParser());
 
 // Limite geral por IP em toda a API, como segunda camada de defesa contra
@@ -54,6 +53,15 @@ app.use(
     message: { error: "Muitas requisições. Aguarde um instante e tente novamente." },
   })
 );
+
+// A Central de Fotos define seus próprios limites de corpo por rota (o
+// envio de fotos precisa de um limite bem maior que o resto da API) -
+// por isso é montada antes do parser JSON genérico de 12mb logo abaixo,
+// que senão consumiria a requisição primeiro com o limite menor.
+app.use("/api/central-fotos", centralFotosRoutes);
+
+// Limite maior por causa das fotos (base64) da Central de Testes.
+app.use(express.json({ limit: "12mb" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);

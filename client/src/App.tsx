@@ -10,10 +10,11 @@ import RmaApp from "./RmaApp";
 import PecasFornecedorApp from "./PecasFornecedorApp";
 import LogisticaApp from "./logistica/LogisticaApp";
 import VendasApp from "./logistica/VendasApp";
+import CentralFotosApp from "./CentralFotosApp";
 import type { User } from "./types";
 
-type AppId = "estoque" | "tecnicos" | "testes" | "rma" | "pecasFornecedor" | "logistica" | "vendas";
-const VALID: AppId[] = ["estoque", "tecnicos", "testes", "rma", "pecasFornecedor", "logistica", "vendas"];
+type AppId = "estoque" | "tecnicos" | "testes" | "rma" | "pecasFornecedor" | "logistica" | "vendas" | "centralFotos";
+const VALID: AppId[] = ["estoque", "tecnicos", "testes", "rma", "pecasFornecedor", "logistica", "vendas", "centralFotos"];
 
 function readHash(): AppId | null {
   const id = window.location.hash.replace("#/", "");
@@ -70,5 +71,6 @@ export default function App() {
   if (active === "pecasFornecedor") return <PecasFornecedorApp user={user} onLogout={logout} onHome={home} />;
   if (active === "logistica") return <LogisticaApp user={user} onLogout={logout} onHome={home} />;
   if (active === "vendas") return <VendasApp user={user} onLogout={logout} onHome={home} />;
+  if (active === "centralFotos") return <CentralFotosApp user={user} onLogout={logout} onHome={home} />;
   return null;
 }
