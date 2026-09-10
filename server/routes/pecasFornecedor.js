@@ -1,5 +1,5 @@
 const express = require("express");
-const { db, transaction } = require("../db");
+const { db, transaction, getMeta, setMeta } = require("../db");
 const { requireAuth, requireAdmin } = require("../auth");
 const { nowStamp } = require("../util");
 const { broadcast } = require("../realtime");
@@ -8,17 +8,40 @@ const { gerarPlanilha } = require("../xlsx");
 const router = express.Router();
 router.use(requireAuth);
 
+// Status da ordem inteira (o fornecedor decide o pacote todo, mesmo que
+// aceite só parte das peças - o que cada peça teve de decisão é outro
+// campo, "decisao").
 const STATUS_LABEL = {
-  aguardando_envio: "Aguardando envio",
-  aguardando_fornecedor: "Aguardando fornecedor",
-  trocada: "Trocada",
-  recusada: "Recusada pelo fornecedor",
+  em_aberto: "Em aberto",
+  registrado: "Registrado",
+  em_analise: "Em análise",
+  liberado: "Liberado",
+  concluido: "Concluído",
+};
+
+const DECISAO_LABEL = {
+  pendente: "Pendente",
+  aceita: "Aceita",
+  recusada: "Recusada",
 };
 
 function registrarEvento(pecaId, texto, user) {
   db.prepare(
     "INSERT INTO pecas_fornecedor_eventos (peca_id,texto,responsible,created_by,created_at) VALUES (?,?,?,?,?)"
   ).run(pecaId, texto, user.name, user.id, nowStamp());
+}
+
+// Numeração sequencial por ano (RMA-20260001, RMA-20260002, ...), reinicia
+// a cada ano novo. Guardada em app_meta porque node:sqlite não tem uma
+// sequência nativa por chave - como cada operação do servidor roda de
+// forma síncrona, ler e gravar o contador aqui dentro é seguro mesmo sem
+// trava adicional.
+function gerarNumeroPedido() {
+  const ano = nowStamp().slice(0, 4);
+  const chave = `pedido_fornecedor_seq_${ano}`;
+  const proximo = (Number(getMeta(chave)) || 0) + 1;
+  setMeta(chave, String(proximo));
+  return `RMA-${ano}${String(proximo).padStart(4, "0")}`;
 }
 
 // ---- Fornecedores ----
@@ -149,10 +172,10 @@ router.delete("/fornecedores/:id/contatos/:contatoId", (req, res) => {
 // ---- Peças ----
 
 router.get("/pecas", (req, res) => {
-  const { status, fornecedorId, busca } = req.query;
+  const { decisao, fornecedorId, busca } = req.query;
   const where = [];
   const params = [];
-  if (status) { where.push("p.status = ?"); params.push(String(status)); }
+  if (decisao) { where.push("p.decisao = ?"); params.push(String(decisao)); }
   if (fornecedorId) { where.push("p.fornecedor_id = ?"); params.push(Number(fornecedorId)); }
   if (busca) {
     where.push("(p.codigo LIKE ? OR p.serial LIKE ? OR p.descricao LIKE ? OR p.ean LIKE ?)");
@@ -170,9 +193,9 @@ router.get("/pecas", (req, res) => {
 });
 
 router.get("/stats", (req, res) => {
-  const porStatus = db.prepare("SELECT status, COUNT(*) AS n FROM pecas_fornecedor GROUP BY status").all();
+  const porStatus = db.prepare("SELECT status, COUNT(*) AS n FROM pedidos_fornecedor GROUP BY status").all();
   const hojeInicio = nowStamp().slice(0, 10);
-  const registradasHoje = db.prepare("SELECT COUNT(*) AS n FROM pecas_fornecedor WHERE created_at >= ?").get(hojeInicio).n;
+  const registradasHoje = db.prepare("SELECT COUNT(*) AS n FROM pedidos_fornecedor WHERE created_at >= ?").get(hojeInicio).n;
   const porFornecedor = db
     .prepare(
       `SELECT f.nome AS fornecedor, COUNT(*) AS n
@@ -190,11 +213,6 @@ router.get("/stats", (req, res) => {
     .map(({ codigo, descricao, n }) => ({ codigo, descricao, n }));
   res.json({ porStatus, registradasHoje, porFornecedor, porPeca });
 });
-
-function gerarNumeroPedido() {
-  const now = nowStamp();
-  return `ORD-${now.slice(0, 10).replaceAll("-", "")}-${String(Date.now()).slice(-5)}`;
-}
 
 router.post("/pecas/lote", (req, res) => {
   const b = req.body || {};
@@ -219,28 +237,32 @@ router.post("/pecas/lote", (req, res) => {
     return res.status(400).json({ error: `Peça ${semDescricao + 1} da lista está sem descrição.` });
   }
 
-  const pedidoNumero = gerarNumeroPedido();
-
   const run = transaction(() => {
     const now = nowStamp();
+    const pedidoNumero = gerarNumeroPedido();
+    db.prepare(
+      `INSERT INTO pedidos_fornecedor (numero,fornecedor_id,rma_relacionado,status,created_by,created_at,updated_by,updated_at)
+       VALUES (?,?,?,'em_aberto',?,?,?,?)`
+    ).run(pedidoNumero, fornecedorId, rmaRelacionado, req.user.id, now, req.user.id, now);
+
     const ids = [];
     for (const item of limpos) {
       const result = db
         .prepare(
           `INSERT INTO pecas_fornecedor
-           (codigo,serial,descricao,ean,marca,defeito,fornecedor_id,status,rma_relacionado,observacoes,pedido_numero,created_by,created_at,updated_by,updated_at)
-           VALUES (?,?,?,?,'',?,?,'aguardando_envio',?,'',?,?,?,?,?)`
+           (codigo,serial,descricao,ean,marca,defeito,fornecedor_id,decisao,observacoes,pedido_numero,created_by,created_at,updated_by,updated_at)
+           VALUES (?,?,?,?,'',?,?,'pendente','',?,?,?,?,?)`
         )
-        .run(item.codigo, item.serial, item.descricao, item.ean, item.defeito, fornecedorId, rmaRelacionado, pedidoNumero, req.user.id, now, req.user.id, now);
+        .run(item.codigo, item.serial, item.descricao, item.ean, item.defeito, fornecedorId, pedidoNumero, req.user.id, now, req.user.id, now);
       const id = result.lastInsertRowid;
-      registrarEvento(id, "Peça cadastrada, aguardando envio ao fornecedor.", req.user);
+      registrarEvento(id, "Peça cadastrada nesta ordem.", req.user);
       ids.push(id);
     }
-    return { ids };
+    return { ids, pedidoNumero };
   });
 
   try {
-    const { ids } = run();
+    const { ids, pedidoNumero } = run();
     broadcast("pecasFornecedor");
     res.json({ ok: true, pedidoNumero, ids });
   } catch (error) {
@@ -248,69 +270,113 @@ router.post("/pecas/lote", (req, res) => {
   }
 });
 
-// ---- Pedidos (agrupamento de peças cadastradas juntas) ----
+// ---- Pedidos ----
 
 router.get("/pedidos", (req, res) => {
   const { status, fornecedorId, busca } = req.query;
   const where = [];
   const params = [];
-  if (fornecedorId) { where.push("p.fornecedor_id = ?"); params.push(Number(fornecedorId)); }
-  if (status) { where.push("p.status = ?"); params.push(String(status)); }
+  if (fornecedorId) { where.push("o.fornecedor_id = ?"); params.push(Number(fornecedorId)); }
+  if (status) { where.push("o.status = ?"); params.push(String(status)); }
   if (busca) {
-    where.push("(p.pedido_numero LIKE ? OR p.codigo LIKE ? OR p.serial LIKE ? OR p.descricao LIKE ? OR p.ean LIKE ?)");
+    where.push("(o.numero LIKE ? OR EXISTS (SELECT 1 FROM pecas_fornecedor p WHERE p.pedido_numero = o.numero AND (p.codigo LIKE ? OR p.serial LIKE ? OR p.descricao LIKE ? OR p.ean LIKE ?)))");
     const like = `%${busca}%`;
     params.push(like, like, like, like, like);
   }
   const sql = `
     SELECT
-      p.pedido_numero,
-      p.fornecedor_id,
+      o.numero AS pedido_numero,
+      o.fornecedor_id,
       f.nome AS fornecedor_nome,
-      COUNT(*) AS total_pecas,
-      MIN(p.created_at) AS created_at,
-      MAX(p.updated_at) AS updated_at,
-      SUM(CASE WHEN p.status = 'aguardando_envio' THEN 1 ELSE 0 END) AS aguardando_envio,
-      SUM(CASE WHEN p.status = 'aguardando_fornecedor' THEN 1 ELSE 0 END) AS aguardando_fornecedor,
-      SUM(CASE WHEN p.status = 'trocada' THEN 1 ELSE 0 END) AS trocada,
-      SUM(CASE WHEN p.status = 'recusada' THEN 1 ELSE 0 END) AS recusada
-    FROM pecas_fornecedor p
-    JOIN fornecedores f ON f.id = p.fornecedor_id
+      o.rma_relacionado,
+      o.status,
+      o.created_at,
+      o.updated_at,
+      COALESCE((SELECT COUNT(*) FROM pecas_fornecedor p WHERE p.pedido_numero = o.numero), 0) AS total_pecas,
+      COALESCE((SELECT COUNT(*) FROM pecas_fornecedor p WHERE p.pedido_numero = o.numero AND p.decisao = 'pendente'), 0) AS pendentes,
+      COALESCE((SELECT COUNT(*) FROM pecas_fornecedor p WHERE p.pedido_numero = o.numero AND p.decisao = 'aceita'), 0) AS aceitas,
+      COALESCE((SELECT COUNT(*) FROM pecas_fornecedor p WHERE p.pedido_numero = o.numero AND p.decisao = 'recusada'), 0) AS recusadas
+    FROM pedidos_fornecedor o
+    JOIN fornecedores f ON f.id = o.fornecedor_id
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
-    GROUP BY p.pedido_numero
-    ORDER BY created_at DESC LIMIT 300`;
+    ORDER BY o.created_at DESC LIMIT 300`;
   const pedidos = db.prepare(sql).all(...params);
   res.json({ pedidos });
 });
 
 router.get("/pedidos/:numero", (req, res) => {
   const numero = req.params.numero;
-  const pecas = db
+  const pedido = db
     .prepare(
-      `SELECT p.*, f.nome AS fornecedor_nome FROM pecas_fornecedor p
-       JOIN fornecedores f ON f.id = p.fornecedor_id
-       WHERE p.pedido_numero = ? ORDER BY p.id ASC`
+      `SELECT o.*, f.nome AS fornecedor_nome FROM pedidos_fornecedor o
+       JOIN fornecedores f ON f.id = o.fornecedor_id
+       WHERE o.numero = ?`
     )
-    .all(numero);
-  if (!pecas.length) return res.status(404).json({ error: "Pedido não encontrado." });
+    .get(numero);
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
+
+  const pecas = db.prepare("SELECT * FROM pecas_fornecedor WHERE pedido_numero = ? ORDER BY id ASC").all(numero);
   res.json({
-    pedidoNumero: numero,
-    fornecedorId: pecas[0].fornecedor_id,
-    fornecedorNome: pecas[0].fornecedor_nome,
-    createdAt: pecas[0].created_at,
+    pedidoNumero: pedido.numero,
+    fornecedorId: pedido.fornecedor_id,
+    fornecedorNome: pedido.fornecedor_nome,
+    rmaRelacionado: pedido.rma_relacionado,
+    status: pedido.status,
+    createdAt: pedido.created_at,
     pecas,
   });
 });
 
-router.delete("/pedidos/:numero", requireAdmin, (req, res) => {
+router.patch("/pedidos/:numero", (req, res) => {
   const numero = req.params.numero;
-  const pecas = db.prepare("SELECT id FROM pecas_fornecedor WHERE pedido_numero = ?").all(numero);
-  if (!pecas.length) return res.status(404).json({ error: "Pedido não encontrado." });
+  const pedido = db.prepare("SELECT * FROM pedidos_fornecedor WHERE numero = ?").get(numero);
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
+
+  const b = req.body || {};
+  const fields = [];
+  const values = [];
+  let eventoStatus = null;
+
+  if (b.status && b.status !== pedido.status) {
+    if (!STATUS_LABEL[b.status]) return res.status(400).json({ error: "Status inválido." });
+    fields.push("status = ?");
+    values.push(b.status);
+    eventoStatus = `Status do pedido alterado para "${STATUS_LABEL[b.status]}".`;
+  }
+  if (typeof b.rmaRelacionado === "string" && b.rmaRelacionado.trim() !== pedido.rma_relacionado) {
+    fields.push("rma_relacionado = ?");
+    values.push(b.rmaRelacionado.trim());
+  }
+  if (!fields.length) return res.status(400).json({ error: "Nada para atualizar." });
 
   const run = transaction(() => {
+    fields.push("updated_by = ?", "updated_at = ?");
+    values.push(req.user.id, nowStamp());
+    values.push(numero);
+    db.prepare(`UPDATE pedidos_fornecedor SET ${fields.join(", ")} WHERE numero = ?`).run(...values);
+    if (eventoStatus) {
+      const pecas = db.prepare("SELECT id FROM pecas_fornecedor WHERE pedido_numero = ?").all(numero);
+      for (const peca of pecas) registrarEvento(peca.id, eventoStatus, req.user);
+    }
+  });
+
+  run();
+  broadcast("pecasFornecedor");
+  res.json({ ok: true });
+});
+
+router.delete("/pedidos/:numero", requireAdmin, (req, res) => {
+  const numero = req.params.numero;
+  const pedido = db.prepare("SELECT numero FROM pedidos_fornecedor WHERE numero = ?").get(numero);
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
+
+  const run = transaction(() => {
+    const pecas = db.prepare("SELECT id FROM pecas_fornecedor WHERE pedido_numero = ?").all(numero);
     for (const peca of pecas) {
       db.prepare("DELETE FROM pecas_fornecedor_eventos WHERE peca_id = ?").run(peca.id);
     }
     db.prepare("DELETE FROM pecas_fornecedor WHERE pedido_numero = ?").run(numero);
+    db.prepare("DELETE FROM pedidos_fornecedor WHERE numero = ?").run(numero);
   });
 
   run();
@@ -324,16 +390,17 @@ router.get("/planilha", async (req, res) => {
   const params = [];
   if (pedidoNumero) { where.push("p.pedido_numero = ?"); params.push(String(pedidoNumero)); }
   if (fornecedorId) { where.push("p.fornecedor_id = ?"); params.push(Number(fornecedorId)); }
-  if (status) { where.push("p.status = ?"); params.push(String(status)); }
+  if (status) { where.push("o.status = ?"); params.push(String(status)); }
   if (busca) {
     where.push("(p.pedido_numero LIKE ? OR p.codigo LIKE ? OR p.serial LIKE ? OR p.descricao LIKE ? OR p.ean LIKE ?)");
     const like = `%${busca}%`;
     params.push(like, like, like, like, like);
   }
   const sql = `
-    SELECT p.*, f.nome AS fornecedor_nome
+    SELECT p.*, f.nome AS fornecedor_nome, o.status AS pedido_status, o.rma_relacionado
     FROM pecas_fornecedor p
     JOIN fornecedores f ON f.id = p.fornecedor_id
+    JOIN pedidos_fornecedor o ON o.numero = p.pedido_numero
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY p.pedido_numero DESC, p.id ASC LIMIT 2000`;
   const pecas = db.prepare(sql).all(...params);
@@ -360,11 +427,16 @@ router.get("/planilha", async (req, res) => {
         { key: "marca", header: "Marca", minWidth: 8, maxWidth: 16 },
         { key: "defeito", header: "Defeito", minWidth: 16, maxWidth: 34, wrap: true },
         { key: "fornecedor_nome", header: "Fornecedor", minWidth: 14, maxWidth: 26, wrap: true },
-        { key: "status_label", header: "Status", minWidth: 12, maxWidth: 20 },
+        { key: "status_label", header: "Status do pedido", minWidth: 12, maxWidth: 20 },
+        { key: "decisao_label", header: "Decisão da peça", minWidth: 12, maxWidth: 18 },
         { key: "rma_relacionado", header: "RMA relacionado", minWidth: 12, maxWidth: 22 },
         { key: "created_at", header: "Data", type: "date", minWidth: 14, maxWidth: 18 },
       ],
-      linhas: pecas.map((p) => ({ ...p, status_label: STATUS_LABEL[p.status] || p.status })),
+      linhas: pecas.map((p) => ({
+        ...p,
+        status_label: STATUS_LABEL[p.pedido_status] || p.pedido_status,
+        decisao_label: DECISAO_LABEL[p.decisao] || p.decisao,
+      })),
     });
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="${nomeArquivo}"`);
@@ -404,7 +476,6 @@ router.patch("/pecas/:id", (req, res) => {
     ean: "ean",
     marca: "marca",
     defeito: "defeito",
-    rmaRelacionado: "rma_relacionado",
     observacoes: "observacoes",
   })) {
     if (typeof b[key] === "string" && b[key] !== peca[column]) {
@@ -413,11 +484,11 @@ router.patch("/pecas/:id", (req, res) => {
     }
   }
 
-  if (b.status && b.status !== peca.status) {
-    if (!STATUS_LABEL[b.status]) return res.status(400).json({ error: "Status inválido." });
-    fields.push("status = ?");
-    values.push(b.status);
-    eventos.push(`Status alterado para "${STATUS_LABEL[b.status]}".`);
+  if (b.decisao && b.decisao !== peca.decisao) {
+    if (!DECISAO_LABEL[b.decisao]) return res.status(400).json({ error: "Decisão inválida." });
+    fields.push("decisao = ?");
+    values.push(b.decisao);
+    eventos.push(`Decisão do fornecedor marcada como "${DECISAO_LABEL[b.decisao]}".`);
   }
 
   if (!fields.length) return res.status(400).json({ error: "Nada para atualizar." });

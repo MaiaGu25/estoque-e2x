@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import {
-  Archive, ArrowLeft, BarChart3, ClipboardList, FileSpreadsheet, LogOut, Menu,
+  Archive, ArrowLeft, BarChart3, CheckCircle2, ClipboardList, FileSpreadsheet, LogOut, Menu,
   MessageSquarePlus, Plus, RefreshCw, Search, ShieldCheck, Trash2, Truck,
-  TriangleAlert, X,
+  TriangleAlert, X, XCircle,
 } from "lucide-react";
 import { api } from "./api";
 import type {
-  Fornecedor, Part, PecaFornecedor, PecaFornecedorEvento, PecaFornecedorStatus,
-  PecasFornecedorStats, PedidoFornecedor, User,
+  Fornecedor, Part, PecaFornecedor, PecaFornecedorDecisao, PecaFornecedorEvento,
+  PecasFornecedorStats, PedidoFornecedor, PedidoFornecedorStatus, User,
 } from "./types";
 import { useRealtime } from "./useRealtime";
 
@@ -19,26 +19,33 @@ function baixarPlanilha(params: Record<string, string>) {
   window.open(`/api/pecas-fornecedor/planilha${qs ? "?" + qs : ""}`, "_blank");
 }
 
-function resumoStatusPedido(p: Pick<PedidoFornecedor, "aguardando_envio" | "aguardando_fornecedor" | "trocada" | "recusada">) {
+function resumoDecisoesPedido(p: Pick<PedidoFornecedor, "pendentes" | "aceitas" | "recusadas">) {
   const partes: string[] = [];
-  if (p.aguardando_envio) partes.push(`${p.aguardando_envio} aguard. envio`);
-  if (p.aguardando_fornecedor) partes.push(`${p.aguardando_fornecedor} aguard. fornecedor`);
-  if (p.trocada) partes.push(`${p.trocada} trocada${p.trocada > 1 ? "s" : ""}`);
-  if (p.recusada) partes.push(`${p.recusada} recusada${p.recusada > 1 ? "s" : ""}`);
+  if (p.pendentes) partes.push(`${p.pendentes} pendente${p.pendentes > 1 ? "s" : ""}`);
+  if (p.aceitas) partes.push(`${p.aceitas} aceita${p.aceitas > 1 ? "s" : ""}`);
+  if (p.recusadas) partes.push(`${p.recusadas} recusada${p.recusadas > 1 ? "s" : ""}`);
   return partes.join(", ") || "—";
 }
 
-const STATUS_LABEL: Record<PecaFornecedorStatus, string> = {
-  aguardando_envio: "Aguardando envio",
-  aguardando_fornecedor: "Aguardando fornecedor",
-  trocada: "Trocada",
-  recusada: "Recusada pelo fornecedor",
+const STATUS_LABEL: Record<PedidoFornecedorStatus, string> = {
+  em_aberto: "Em aberto",
+  registrado: "Registrado",
+  em_analise: "Em análise",
+  liberado: "Liberado",
+  concluido: "Concluído",
 };
-const STATUS_CLASS: Record<PecaFornecedorStatus, string> = {
-  aguardando_envio: "warn",
-  aguardando_fornecedor: "",
-  trocada: "ok",
-  recusada: "warn",
+const STATUS_CLASS: Record<PedidoFornecedorStatus, string> = {
+  em_aberto: "warn",
+  registrado: "",
+  em_analise: "transfer",
+  liberado: "adjust",
+  concluido: "ok",
+};
+
+const DECISAO_LABEL: Record<PecaFornecedorDecisao, string> = {
+  pendente: "Pendente",
+  aceita: "Aceita",
+  recusada: "Recusada",
 };
 
 export default function PecasFornecedorApp({ user, onLogout, onHome }: { user: User; onLogout: () => void; onHome: () => void }) {
@@ -194,8 +201,48 @@ function Stat({ icon: Icon, label, value, note, alert }: { icon: any; label: str
   );
 }
 
-function StatusBadge({ status }: { status: PecaFornecedorStatus }) {
+function StatusBadge({ status }: { status: PedidoFornecedorStatus }) {
   return <span className={`status ${STATUS_CLASS[status]}`}>{STATUS_LABEL[status]}</span>;
+}
+
+const DECISAO_CLASS: Record<PecaFornecedorDecisao, string> = { pendente: "", aceita: "ok", recusada: "warn" };
+
+function DecisaoBadge({ decisao }: { decisao: PecaFornecedorDecisao }) {
+  return <span className={`status ${DECISAO_CLASS[decisao]}`}>{DECISAO_LABEL[decisao]}</span>;
+}
+
+// Tiquinho verde/vermelho pra marcar se o fornecedor aceitou ou recusou
+// aquela peça na troca - clicar de novo no que já está marcado volta pra
+// "pendente".
+function DecisaoToggle({ decisao, onChange, disabled }: { decisao: PecaFornecedorDecisao; onChange: (d: PecaFornecedorDecisao) => void; disabled?: boolean }) {
+  return (
+    <div style={{ display: "flex", gap: 4 }}>
+      <button
+        className="icon-btn"
+        title="Aceita pelo fornecedor"
+        disabled={disabled}
+        onClick={(e) => {
+          e.stopPropagation();
+          onChange(decisao === "aceita" ? "pendente" : "aceita");
+        }}
+        style={{ color: decisao === "aceita" ? "#078348" : "#c3cdc8", background: decisao === "aceita" ? "#def8e9" : "transparent", borderRadius: 8 }}
+      >
+        <CheckCircle2 size={20} />
+      </button>
+      <button
+        className="icon-btn"
+        title="Recusada pelo fornecedor"
+        disabled={disabled}
+        onClick={(e) => {
+          e.stopPropagation();
+          onChange(decisao === "recusada" ? "pendente" : "recusada");
+        }}
+        style={{ color: decisao === "recusada" ? "#b83224" : "#c3cdc8", background: decisao === "recusada" ? "#fff0ee" : "transparent", borderRadius: 8 }}
+      >
+        <XCircle size={20} />
+      </button>
+    </div>
+  );
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
@@ -229,7 +276,7 @@ function PainelTab({ refreshKey, onAbrirPedido }: { refreshKey: number; onAbrirP
     api.get<{ pedidos: PedidoFornecedor[] }>("/api/pecas-fornecedor/pedidos").then((r) => setRecentes(r.pedidos.slice(0, 8))).catch(() => {});
   }, [refreshKey]);
 
-  const emAndamento = stats?.porStatus.filter((s) => s.status !== "trocada" && s.status !== "recusada").reduce((s, r) => s + r.n, 0) || 0;
+  const emAndamento = stats?.porStatus.filter((s) => s.status !== "concluido").reduce((s, r) => s + r.n, 0) || 0;
 
   return (
     <section>
@@ -259,7 +306,9 @@ function PainelTab({ refreshKey, onAbrirPedido }: { refreshKey: number; onAbrirP
                     </td>
                     <td>{p.fornecedor_nome}</td>
                     <td>{fmt(p.total_pecas)}</td>
-                    <td>{resumoStatusPedido(p)}</td>
+                    <td>
+                      <StatusBadge status={p.status} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -393,6 +442,7 @@ function OrdensTab({
               <th>Fornecedor</th>
               <th>Peças</th>
               <th>Status</th>
+              <th>Decisões</th>
               <th>Data</th>
             </tr>
           </thead>
@@ -404,7 +454,10 @@ function OrdensTab({
                 </td>
                 <td>{p.fornecedor_nome}</td>
                 <td>{fmt(p.total_pecas)}</td>
-                <td>{resumoStatusPedido(p)}</td>
+                <td>
+                  <StatusBadge status={p.status} />
+                </td>
+                <td>{resumoDecisoesPedido(p)}</td>
                 <td>{dt(p.created_at)}</td>
               </tr>
             ))}
@@ -958,20 +1011,59 @@ function PedidoDetalheModal({
   onAtualizado: () => void;
   onExcluido: () => void;
 }) {
-  const [pedido, setPedido] = useState<{ pedidoNumero: string; fornecedorNome: string; createdAt: string; pecas: PecaFornecedor[] } | null>(null);
+  const [pedido, setPedido] = useState<{
+    pedidoNumero: string;
+    fornecedorNome: string;
+    rmaRelacionado: string;
+    status: PedidoFornecedorStatus;
+    createdAt: string;
+    pecas: PecaFornecedor[];
+  } | null>(null);
   const [err, setErr] = useState("");
   const [excluirErr, setExcluirErr] = useState("");
   const [pecaAberta, setPecaAberta] = useState<number | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [salvando, setSalvando] = useState(false);
 
   const carregar = async () => {
     try {
-      const r = await api.get<{ pedidoNumero: string; fornecedorNome: string; createdAt: string; pecas: PecaFornecedor[] }>(
-        `/api/pecas-fornecedor/pedidos/${numero}`
-      );
+      const r = await api.get<{
+        pedidoNumero: string;
+        fornecedorNome: string;
+        rmaRelacionado: string;
+        status: PedidoFornecedorStatus;
+        createdAt: string;
+        pecas: PecaFornecedor[];
+      }>(`/api/pecas-fornecedor/pedidos/${numero}`);
       setPedido(r);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Não foi possível carregar o pedido.");
+    }
+  };
+
+  const salvarPedido = async (patch: Record<string, unknown>) => {
+    setSalvando(true);
+    try {
+      await api.patch(`/api/pecas-fornecedor/pedidos/${numero}`, patch);
+      await carregar();
+      onAtualizado();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível salvar.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const marcarDecisao = async (pecaId: number, decisao: PecaFornecedorDecisao) => {
+    setSalvando(true);
+    try {
+      await api.patch(`/api/pecas-fornecedor/pecas/${pecaId}`, { decisao });
+      await carregar();
+      onAtualizado();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível marcar a decisão.");
+    } finally {
+      setSalvando(false);
     }
   };
 
@@ -993,7 +1085,7 @@ function PedidoDetalheModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numero]);
 
-  if (err) {
+  if (err && !pedido) {
     return (
       <Modal title="Pedido" onClose={onClose}>
         <div className="error">{err}</div>
@@ -1017,7 +1109,30 @@ function PedidoDetalheModal({
         title={pedido.pedidoNumero}
         subtitle={`Fornecedor: ${pedido.fornecedorNome} · registrado em ${dt(pedido.createdAt)} · ${pedido.pecas.length} peça${pedido.pecas.length === 1 ? "" : "s"}`}
         onClose={onClose}
+        wide
       >
+        <div className="form-grid" style={{ marginBottom: 16 }}>
+          <Field label="Status do pedido">
+            <select value={pedido.status} onChange={(e) => salvarPedido({ status: e.target.value })} disabled={salvando}>
+              {Object.entries(STATUS_LABEL).map(([k, l]) => (
+                <option key={k} value={k}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="RMA relacionado">
+            <input
+              defaultValue={pedido.rmaRelacionado}
+              onBlur={(e) => e.target.value.trim() !== pedido.rmaRelacionado && salvarPedido({ rmaRelacionado: e.target.value })}
+              placeholder="Ex.: RMA-20260904"
+            />
+          </Field>
+        </div>
+
+        <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: "0 0 8px" }}>
+          Marque o que o fornecedor aceitou trocar
+        </p>
         <div className="table-card" style={{ marginBottom: 16 }}>
           <table>
             <thead>
@@ -1026,7 +1141,8 @@ function PedidoDetalheModal({
                 <th>Descrição</th>
                 <th>Serial</th>
                 <th>Defeito</th>
-                <th>Status</th>
+                <th>Decisão</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -1039,14 +1155,17 @@ function PedidoDetalheModal({
                   <td>{p.serial || "—"}</td>
                   <td>{p.defeito || "—"}</td>
                   <td>
-                    <StatusBadge status={p.status} />
+                    <DecisaoBadge decisao={p.decisao} />
+                  </td>
+                  <td>
+                    <DecisaoToggle decisao={p.decisao} disabled={salvando} onChange={(d) => marcarDecisao(p.id, d)} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {excluirErr && <div className="error">{excluirErr}</div>}
+        {(err || excluirErr) && <div className="error">{err || excluirErr}</div>}
         <div className="modal-actions">
           {isAdmin && (
             <button className="secondary" onClick={excluir} disabled={excluindo}>
@@ -1139,8 +1258,8 @@ function DetalhePecaModal({ id, onClose, onAtualizado }: { id: number; onClose: 
   return (
     <Modal title={`${peca.codigo || peca.descricao}`} subtitle={`Fornecedor: ${peca.fornecedor_nome} · registrada em ${dt(peca.created_at)}`} onClose={onClose}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16 }}>
-        <StatusBadge status={peca.status} />
-        {peca.rma_relacionado && <span className="pill in">RMA: {peca.rma_relacionado}</span>}
+        <DecisaoBadge decisao={peca.decisao} />
+        <DecisaoToggle decisao={peca.decisao} disabled={salvando} onChange={(d) => atualizar({ decisao: d })} />
       </div>
 
       <div className="form-grid">
@@ -1159,16 +1278,6 @@ function DetalhePecaModal({ id, onClose, onAtualizado }: { id: number; onClose: 
       </div>
       <Field label="Defeito">
         <textarea defaultValue={peca.defeito} onBlur={(e) => e.target.value !== peca.defeito && atualizar({ defeito: e.target.value })} />
-      </Field>
-
-      <Field label="Status">
-        <select value={peca.status} onChange={(e) => atualizar({ status: e.target.value })} disabled={salvando}>
-          {Object.entries(STATUS_LABEL).map(([k, l]) => (
-            <option key={k} value={k}>
-              {l}
-            </option>
-          ))}
-        </select>
       </Field>
 
       {err && <div className="error">{err}</div>}

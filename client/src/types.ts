@@ -218,7 +218,9 @@ export type Fornecedor = {
   contatos: FornecedorContato[];
 };
 
-export type PecaFornecedorStatus = "aguardando_envio" | "aguardando_fornecedor" | "trocada" | "recusada";
+export type PedidoFornecedorStatus = "em_aberto" | "registrado" | "em_analise" | "liberado" | "concluido";
+
+export type PecaFornecedorDecisao = "pendente" | "aceita" | "recusada";
 
 export type PecaFornecedor = {
   id: number;
@@ -230,8 +232,7 @@ export type PecaFornecedor = {
   defeito: string;
   fornecedor_id: number;
   fornecedor_nome: string;
-  status: PecaFornecedorStatus;
-  rma_relacionado: string;
+  decisao: PecaFornecedorDecisao;
   observacoes: string;
   pedido_numero: string;
   created_at: string;
@@ -242,13 +243,14 @@ export type PedidoFornecedor = {
   pedido_numero: string;
   fornecedor_id: number;
   fornecedor_nome: string;
+  rma_relacionado: string;
+  status: PedidoFornecedorStatus;
   total_pecas: number;
   created_at: string;
   updated_at: string;
-  aguardando_envio: number;
-  aguardando_fornecedor: number;
-  trocada: number;
-  recusada: number;
+  pendentes: number;
+  aceitas: number;
+  recusadas: number;
 };
 
 export type PecaFornecedorEvento = {
@@ -260,7 +262,7 @@ export type PecaFornecedorEvento = {
 };
 
 export type PecasFornecedorStats = {
-  porStatus: { status: PecaFornecedorStatus; n: number }[];
+  porStatus: { status: PedidoFornecedorStatus; n: number }[];
   registradasHoje: number;
   porFornecedor: { fornecedor: string; n: number }[];
   porPeca: { codigo: string; descricao: string; n: number }[];
