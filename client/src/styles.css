@@ -46,6 +46,8 @@ button { cursor: pointer; }
 .tec-card strong{display:block;font-size:22px}
 .tec-card small{display:block;font-size:10px;font-weight:800;margin-top:2px}
 .tec-field-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#6f8279;font-weight:800;margin:0 0 6px}
+.tec-inv-input{width:110px;height:44px;font-size:18px;font-weight:700;border:1px solid #d9e3dd;border-radius:10px;padding:0 12px;outline:none;text-align:center}
+.tec-inv-input:focus{border-color:#12b86a;box-shadow:0 0 0 3px #12b86a18}
 .tec-machine-card{margin-bottom:10px}
 
 /* Central de testes */

@@ -197,6 +197,60 @@ CREATE TABLE IF NOT EXISTS testes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tec_movimentos_created_at ON tec_movimentos(created_at);
+
+-- Inventário físico do estoque dos Técnicos: contagem de itens (tec_itens)
+-- comparada ao saldo do sistema, gerando ajustes em tec_movimentos quando
+-- finalizado. Não mexe em nenhum outro estoque (peças gerais, Logística).
+CREATE TABLE IF NOT EXISTS tec_inventarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'em_andamento' CHECK(status IN ('em_andamento','concluido','cancelado')),
+  motivo TEXT NOT NULL DEFAULT '',
+  observacao TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  finalized_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  concluded_at TEXT
+);
+
+-- Uma linha por item ativo no momento em que o inventário começou (o
+-- "universo" do inventário fica travado na criação). saldo_inicial guarda
+-- o saldo visto nesse momento, pra detectar se alguém mexeu no estoque
+-- desse item enquanto a contagem rolava. saldo_revisao/diferenca/
+-- saldo_posterior só são preenchidos na finalização, como registro
+-- permanente de auditoria.
+CREATE TABLE IF NOT EXISTS tec_inventario_itens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  inventario_id INTEGER NOT NULL REFERENCES tec_inventarios(id),
+  item_id INTEGER NOT NULL REFERENCES tec_itens(id),
+  saldo_inicial INTEGER NOT NULL,
+  modo TEXT NOT NULL DEFAULT 'final' CHECK(modo IN ('final','soma')),
+  contado INTEGER NOT NULL DEFAULT 0,
+  quantidade_contada INTEGER,
+  observacao TEXT NOT NULL DEFAULT '',
+  saldo_revisao INTEGER,
+  diferenca INTEGER,
+  saldo_posterior INTEGER,
+  updated_at TEXT NOT NULL,
+  UNIQUE(inventario_id, item_id)
+);
+
+-- Parcelas do modo "somar aos poucos" (10 + 8 + 5 = 23). Cada parcela fica
+-- guardada pra permitir "desfazer a última" sem perder as anteriores.
+CREATE TABLE IF NOT EXISTS tec_inventario_contagens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  inventario_item_id INTEGER NOT NULL REFERENCES tec_inventario_itens(id),
+  valor INTEGER NOT NULL,
+  ordem INTEGER NOT NULL,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tec_inventarios_status ON tec_inventarios(status);
+CREATE INDEX IF NOT EXISTS idx_tec_inventario_itens_inventario ON tec_inventario_itens(inventario_id);
+CREATE INDEX IF NOT EXISTS idx_tec_inventario_contagens_item ON tec_inventario_contagens(inventario_item_id);
+
 CREATE INDEX IF NOT EXISTS idx_testes_created_at ON testes(created_at);
 
 -- Módulo "RMA / SAC" (devoluções de clientes vindas das plataformas)

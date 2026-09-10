@@ -13,7 +13,7 @@ export default function ChangePassword({ onDone }: { onDone: (user: User) => voi
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (newPassword.length < 6) return setError("A nova senha precisa ter pelo menos 6 caracteres.");
+    if (newPassword.length < 8) return setError("A nova senha precisa ter pelo menos 8 caracteres.");
     if (newPassword !== confirm) return setError("As senhas não conferem.");
     setLoading(true);
     try {

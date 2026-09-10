@@ -128,6 +128,89 @@ export type TecnicosData = {
   movimentos: TecMovimento[];
 };
 
+// ---- Inventário físico (Técnicos) ----
+
+export type TecInventarioStatus = "em_andamento" | "concluido" | "cancelado";
+export type TecInventarioModo = "final" | "soma";
+export type TecInventarioSituacao = "PENDENTE" | "CORRETO" | "FALTA" | "SOBRA";
+
+export type TecInventarioContagem = {
+  id: number;
+  valor: number;
+  ordem: number;
+  createdAt: string;
+};
+
+export type TecInventarioItem = {
+  id: number;
+  itemId: number;
+  categoria: string;
+  nome: string;
+  saldoInicial: number;
+  saldoAtual: number;
+  saldoAlterado: boolean;
+  modo: TecInventarioModo;
+  contado: boolean;
+  quantidadeContada: number | null;
+  diferenca: number | null;
+  situacao: TecInventarioSituacao;
+  observacao: string;
+  contagens: TecInventarioContagem[];
+};
+
+export type TecInventarioResumo = {
+  total: number;
+  contados: number;
+  naoContados: number;
+  semDiferenca: number;
+  comFalta: number;
+  comSobra: number;
+  comSaldoAlterado: number;
+};
+
+export type TecInventarioCabecalho = {
+  id: number;
+  numero: string;
+  status: TecInventarioStatus;
+  motivo: string;
+  observacao: string;
+  createdBy: number | null;
+  createdByNome: string | null;
+  finalizedBy: number | null;
+  finalizedByNome: string | null;
+  createdAt: string;
+  updatedAt: string;
+  concludedAt: string | null;
+};
+
+export type TecInventarioDetalhe = {
+  inventario: TecInventarioCabecalho;
+  itens: TecInventarioItem[];
+  resumo: TecInventarioResumo;
+};
+
+export type TecInventarioResumoHistorico = {
+  id: number;
+  numero: string;
+  status: TecInventarioStatus;
+  responsavelNome: string | null;
+  createdByNome: string | null;
+  finalizedByNome: string | null;
+  createdAt: string;
+  concludedAt: string | null;
+  totalProdutos: number;
+  produtosContados: number;
+  divergencias: number;
+};
+
+export type TecInventarioSaldoAlterado = {
+  itemId: number;
+  nome: string;
+  saldoInicial: number;
+  saldoAtual: number;
+  quantidadeContada: number;
+};
+
 // ---- Central de Testes ----
 
 export type Teste = {
