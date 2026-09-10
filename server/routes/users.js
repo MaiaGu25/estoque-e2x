@@ -17,8 +17,8 @@ router.post("/", (req, res) => {
   const name = String(req.body?.name || "").trim();
   const password = String(req.body?.password || "");
   const role = req.body?.role === "admin" ? "admin" : "operador";
-  if (!username || !name || password.length < 6) {
-    return res.status(400).json({ error: "Preencha usuário, nome e uma senha com pelo menos 6 caracteres." });
+  if (!username || !name || password.length < 8) {
+    return res.status(400).json({ error: "Preencha usuário, nome e uma senha com pelo menos 8 caracteres." });
   }
   try {
     const hash = bcrypt.hashSync(password, 10);
@@ -59,8 +59,8 @@ router.patch("/:id", (req, res) => {
     fields.push("session_version = session_version + 1");
   }
   if (typeof req.body?.newPassword === "string" && req.body.newPassword) {
-    if (req.body.newPassword.length < 6) {
-      return res.status(400).json({ error: "A senha precisa ter pelo menos 6 caracteres." });
+    if (req.body.newPassword.length < 8) {
+      return res.status(400).json({ error: "A senha precisa ter pelo menos 8 caracteres." });
     }
     fields.push("password_hash = ?");
     values.push(bcrypt.hashSync(req.body.newPassword, 10));
