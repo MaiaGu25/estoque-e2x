@@ -328,6 +328,61 @@ router.get("/pedidos/:numero", (req, res) => {
   });
 });
 
+// Enquanto o pedido não estiver concluído, a recepção pode ir incluindo
+// mais peças na mesma ordem (ex.: o fornecedor ainda está avaliando e
+// aparece mais uma peça com o mesmo defeito).
+router.post("/pedidos/:numero/pecas", (req, res) => {
+  const numero = req.params.numero;
+  const pedido = db.prepare("SELECT * FROM pedidos_fornecedor WHERE numero = ?").get(numero);
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
+  if (pedido.status === "concluido") {
+    return res.status(400).json({ error: "Este pedido já está concluído e não aceita novas peças." });
+  }
+
+  const b = req.body || {};
+  const itens = Array.isArray(b.itens) ? b.itens : [];
+  if (!itens.length) return res.status(400).json({ error: "Adicione ao menos uma peça na lista." });
+
+  const limpos = itens.map((item) => ({
+    codigo: String(item?.codigo || "").trim(),
+    serial: String(item?.serial || "").trim(),
+    descricao: String(item?.descricao || "").trim(),
+    ean: String(item?.ean || "").trim(),
+    defeito: String(item?.defeito || "").trim(),
+  }));
+  const semDescricao = limpos.findIndex((item) => !item.descricao);
+  if (semDescricao !== -1) {
+    return res.status(400).json({ error: `Peça ${semDescricao + 1} da lista está sem descrição.` });
+  }
+
+  const run = transaction(() => {
+    const now = nowStamp();
+    const ids = [];
+    for (const item of limpos) {
+      const result = db
+        .prepare(
+          `INSERT INTO pecas_fornecedor
+           (codigo,serial,descricao,ean,marca,defeito,fornecedor_id,decisao,observacoes,pedido_numero,created_by,created_at,updated_by,updated_at)
+           VALUES (?,?,?,?,'',?,?,'pendente','',?,?,?,?,?)`
+        )
+        .run(item.codigo, item.serial, item.descricao, item.ean, item.defeito, pedido.fornecedor_id, numero, req.user.id, now, req.user.id, now);
+      const id = result.lastInsertRowid;
+      registrarEvento(id, "Peça adicionada a esta ordem.", req.user);
+      ids.push(id);
+    }
+    db.prepare("UPDATE pedidos_fornecedor SET updated_by = ?, updated_at = ? WHERE numero = ?").run(req.user.id, now, numero);
+    return ids;
+  });
+
+  try {
+    const ids = run();
+    broadcast("pecasFornecedor");
+    res.json({ ok: true, ids });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível adicionar as peças." });
+  }
+});
+
 router.patch("/pedidos/:numero", (req, res) => {
   const numero = req.params.numero;
   const pedido = db.prepare("SELECT * FROM pedidos_fornecedor WHERE numero = ?").get(numero);

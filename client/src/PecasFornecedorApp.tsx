@@ -841,7 +841,7 @@ function Modal({
   );
 }
 
-type ItemLote = {
+type ItemPecaForm = {
   key: number;
   codigo: string;
   descricao: string;
@@ -850,85 +850,44 @@ type ItemLote = {
   defeito: string;
 };
 
-let itemLoteSeq = 0;
+let itemPecaFormSeq = 0;
 
-function NovaPecaModal({
-  fornecedores,
+// Busca no estoque + carrinho de peças, usado tanto pra montar uma ordem
+// nova quanto pra incluir mais peças numa ordem já existente.
+function ListaPecasForm({
   estoquePecas,
-  onClose,
-  onCriada,
+  itens,
+  onChange,
 }: {
-  fornecedores: Fornecedor[];
   estoquePecas: Part[];
-  onClose: () => void;
-  onCriada: (pedidoNumero: string) => void;
+  itens: ItemPecaForm[];
+  onChange: (itens: ItemPecaForm[]) => void;
 }) {
-  const [fornecedorId, setFornecedorId] = useState(fornecedores[0]?.id || 0);
-  const [rmaRelacionado, setRmaRelacionado] = useState("");
   const [busca, setBusca] = useState("");
-  const [itens, setItens] = useState<ItemLote[]>([]);
-  const [err, setErr] = useState("");
-  const [saving, setSaving] = useState(false);
 
   const encontradas = busca
     ? estoquePecas.filter((p) => (p.code + " " + p.name).toLowerCase().includes(busca.toLowerCase())).slice(0, 8)
     : [];
 
   const adicionarDoEstoque = (p: Part) => {
-    setItens((x) => [...x, { key: ++itemLoteSeq, codigo: p.code, descricao: p.name, serial: "", ean: "", defeito: "" }]);
+    onChange([...itens, { key: ++itemPecaFormSeq, codigo: p.code, descricao: p.name, serial: "", ean: "", defeito: "" }]);
     setBusca("");
   };
 
   const adicionarAvulsa = () => {
-    setItens((x) => [...x, { key: ++itemLoteSeq, codigo: "", descricao: "", serial: "", ean: "", defeito: "" }]);
+    onChange([...itens, { key: ++itemPecaFormSeq, codigo: "", descricao: "", serial: "", ean: "", defeito: "" }]);
   };
 
-  const atualizarItem = (key: number, patch: Partial<ItemLote>) => {
-    setItens((x) => x.map((i) => (i.key === key ? { ...i, ...patch } : i)));
+  const atualizarItem = (key: number, patch: Partial<ItemPecaForm>) => {
+    onChange(itens.map((i) => (i.key === key ? { ...i, ...patch } : i)));
   };
 
   const removerItem = (key: number) => {
-    setItens((x) => x.filter((i) => i.key !== key));
-  };
-
-  const salvar = async () => {
-    setErr("");
-    if (!fornecedorId) return setErr("Selecione o fornecedor.");
-    if (!itens.length) return setErr("Adicione ao menos uma peça na lista.");
-    const semDescricao = itens.findIndex((i) => !i.descricao.trim());
-    if (semDescricao !== -1) return setErr(`Peça ${semDescricao + 1} da lista está sem descrição.`);
-    setSaving(true);
-    try {
-      const res = await api.post<{ ok: boolean; pedidoNumero: string; ids: number[] }>("/api/pecas-fornecedor/pecas/lote", {
-        fornecedorId,
-        rmaRelacionado,
-        itens: itens.map(({ codigo, descricao, serial, ean, defeito }) => ({ codigo, descricao, serial, ean, defeito })),
-      });
-      onCriada(res.pedidoNumero);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Não foi possível cadastrar as peças.");
-    } finally {
-      setSaving(false);
-    }
+    onChange(itens.filter((i) => i.key !== key));
   };
 
   return (
-    <Modal title="Nova ordem para o fornecedor" subtitle="Monte a lista de peças defeituosas antes de enviar ao fornecedor." onClose={onClose}>
-      <div className="form-grid">
-        <Field label="Fornecedor *">
-          <select value={fornecedorId} onChange={(e) => setFornecedorId(Number(e.target.value))}>
-            {fornecedores.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.nome}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Nº do caso RMA relacionado (opcional)">
-          <input value={rmaRelacionado} onChange={(e) => setRmaRelacionado(e.target.value)} placeholder="Ex.: RMA-20260904-95889" />
-        </Field>
-      </div>
-
+    <>
       <Field label="Adicionar peça (digite o código ou nome)">
         <div className="part-search">
           <Search />
@@ -986,6 +945,66 @@ function NovaPecaModal({
         ))}
         {!itens.length && <p className="cart-empty">Pesquise uma peça do estoque acima, ou adicione uma peça avulsa.</p>}
       </div>
+    </>
+  );
+}
+
+function NovaPecaModal({
+  fornecedores,
+  estoquePecas,
+  onClose,
+  onCriada,
+}: {
+  fornecedores: Fornecedor[];
+  estoquePecas: Part[];
+  onClose: () => void;
+  onCriada: (pedidoNumero: string) => void;
+}) {
+  const [fornecedorId, setFornecedorId] = useState(fornecedores[0]?.id || 0);
+  const [rmaRelacionado, setRmaRelacionado] = useState("");
+  const [itens, setItens] = useState<ItemPecaForm[]>([]);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const salvar = async () => {
+    setErr("");
+    if (!fornecedorId) return setErr("Selecione o fornecedor.");
+    if (!itens.length) return setErr("Adicione ao menos uma peça na lista.");
+    const semDescricao = itens.findIndex((i) => !i.descricao.trim());
+    if (semDescricao !== -1) return setErr(`Peça ${semDescricao + 1} da lista está sem descrição.`);
+    setSaving(true);
+    try {
+      const res = await api.post<{ ok: boolean; pedidoNumero: string; ids: number[] }>("/api/pecas-fornecedor/pecas/lote", {
+        fornecedorId,
+        rmaRelacionado,
+        itens: itens.map(({ codigo, descricao, serial, ean, defeito }) => ({ codigo, descricao, serial, ean, defeito })),
+      });
+      onCriada(res.pedidoNumero);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível cadastrar as peças.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Nova ordem para o fornecedor" subtitle="Monte a lista de peças defeituosas antes de enviar ao fornecedor." onClose={onClose}>
+      <div className="form-grid">
+        <Field label="Fornecedor *">
+          <select value={fornecedorId} onChange={(e) => setFornecedorId(Number(e.target.value))}>
+            {fornecedores.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.nome}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Nº do caso RMA relacionado (opcional)">
+          <input value={rmaRelacionado} onChange={(e) => setRmaRelacionado(e.target.value)} placeholder="Ex.: RMA-20260904-95889" />
+        </Field>
+      </div>
+
+      <ListaPecasForm estoquePecas={estoquePecas} itens={itens} onChange={setItens} />
 
       {err && <div className="error">{err}</div>}
       <div className="modal-actions">
@@ -1026,6 +1045,7 @@ function PedidoDetalheModal({
   const [pecaAberta, setPecaAberta] = useState<number | null>(null);
   const [excluindo, setExcluindo] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [adicionando, setAdicionando] = useState(false);
 
   const carregar = async () => {
     try {
@@ -1132,9 +1152,19 @@ function PedidoDetalheModal({
           </Field>
         </div>
 
-        <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: "0 0 8px" }}>
-          Marque o que o fornecedor aceitou trocar
-        </p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 8px" }}>
+          <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: 0 }}>
+            Marque o que o fornecedor aceitou trocar
+          </p>
+          <button
+            className="secondary"
+            onClick={() => setAdicionando(true)}
+            disabled={pedido.status === "concluido"}
+            title={pedido.status === "concluido" ? "Pedido concluído, não é possível adicionar peças." : undefined}
+          >
+            <Plus size={15} /> Adicionar peças
+          </button>
+        </div>
         <div className="table-card" style={{ marginBottom: 16 }}>
           <table>
             <thead>
@@ -1192,7 +1222,71 @@ function PedidoDetalheModal({
           }}
         />
       )}
+      {adicionando && (
+        <AdicionarPecasModal
+          numero={numero}
+          onClose={() => setAdicionando(false)}
+          onAdicionado={() => {
+            setAdicionando(false);
+            carregar();
+            onAtualizado();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function AdicionarPecasModal({
+  numero,
+  onClose,
+  onAdicionado,
+}: {
+  numero: string;
+  onClose: () => void;
+  onAdicionado: () => void;
+}) {
+  const [estoquePecas, setEstoquePecas] = useState<Part[]>([]);
+  const [itens, setItens] = useState<ItemPecaForm[]>([]);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get<{ parts: Part[] }>("/api/data").then((r) => setEstoquePecas(r.parts)).catch(() => {});
+  }, []);
+
+  const salvar = async () => {
+    setErr("");
+    if (!itens.length) return setErr("Adicione ao menos uma peça na lista.");
+    const semDescricao = itens.findIndex((i) => !i.descricao.trim());
+    if (semDescricao !== -1) return setErr(`Peça ${semDescricao + 1} da lista está sem descrição.`);
+    setSaving(true);
+    try {
+      await api.post(`/api/pecas-fornecedor/pedidos/${numero}/pecas`, {
+        itens: itens.map(({ codigo, descricao, serial, ean, defeito }) => ({ codigo, descricao, serial, ean, defeito })),
+      });
+      onAdicionado();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível adicionar as peças.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={`Adicionar peças · ${numero}`} subtitle="Inclua mais peças nessa mesma ordem, antes de ela ser concluída." onClose={onClose}>
+      <ListaPecasForm estoquePecas={estoquePecas} itens={itens} onChange={setItens} />
+
+      {err && <div className="error">{err}</div>}
+      <div className="modal-actions">
+        <button className="secondary" onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="primary" disabled={saving || !itens.length} onClick={salvar}>
+          {saving ? "Adicionando…" : `Adicionar ${itens.length || ""} peça${itens.length === 1 ? "" : "s"}`}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
