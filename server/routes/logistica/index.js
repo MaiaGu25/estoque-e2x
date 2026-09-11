@@ -10,5 +10,8 @@ router.use("/movimentacoes", require("./movimentacoes"));
 router.use("/historico", require("./historico"));
 router.use("/dashboard", require("./dashboard"));
 router.use("/orcamentos", require("./orcamentos"));
+router.use("/conferencia", require("./conferencia"));
+router.use("/separacao", require("./separacao"));
+router.use("/serial", require("./serial"));
 
 module.exports = router;

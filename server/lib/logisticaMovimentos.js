@@ -64,7 +64,11 @@ function validarComum(b) {
   return { reason, responsible, notes: String(b.notes || "").trim() };
 }
 
-const registrarEntradaTx = transaction((b, user) => {
+// Núcleo sem transação própria - para ser chamado tanto direto (embrulhado
+// abaixo em registrarEntradaTx) quanto de dentro de uma transação maior de
+// outro módulo (ex.: conferência de entrada), já que node:sqlite não
+// suporta BEGIN aninhado.
+function entradaCore(b, user) {
   const { reason, responsible, notes } = validarComum(b);
   const quantity = Number(b.quantity);
   if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Quantidade inválida.");
@@ -88,9 +92,11 @@ const registrarEntradaTx = transaction((b, user) => {
   ).run(op.lastInsertRowid, produto.id, quantity, posicao.id, saldoAntes, saldoDepois, totalAntes, totalAntes + quantity, now);
 
   return number;
-});
+}
 
-const registrarSaidaTx = transaction((b, user) => {
+const registrarEntradaTx = transaction(entradaCore);
+
+function saidaCore(b, user) {
   const { reason, responsible, notes } = validarComum(b);
   const quantity = Number(b.quantity);
   if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Quantidade inválida.");
@@ -115,9 +121,11 @@ const registrarSaidaTx = transaction((b, user) => {
   ).run(op.lastInsertRowid, produto.id, quantity, posicao.id, saldoAntes, saldoDepois, totalAntes, totalAntes - quantity, now);
 
   return number;
-});
+}
 
-const registrarTransferenciaTx = transaction((b, user) => {
+const registrarSaidaTx = transaction(saidaCore);
+
+function transferenciaCore(b, user) {
   const { reason, responsible, notes } = validarComum(b);
   const quantity = Number(b.quantity);
   if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Quantidade inválida.");
@@ -161,9 +169,11 @@ const registrarTransferenciaTx = transaction((b, user) => {
   );
 
   return number;
-});
+}
 
-const registrarAjusteTx = transaction((b, user) => {
+const registrarTransferenciaTx = transaction(transferenciaCore);
+
+function ajusteCore(b, user) {
   const { reason, responsible, notes } = validarComum(b);
   const quantidadeFisica = Number(b.quantidadeFisica);
   if (!Number.isFinite(quantidadeFisica) || quantidadeFisica < 0) throw new Error("Informe a quantidade física encontrada (0 ou mais).");
@@ -202,18 +212,35 @@ const registrarAjusteTx = transaction((b, user) => {
   );
 
   return { number, diferenca };
-});
+}
+
+const registrarAjusteTx = transaction(ajusteCore);
 
 // Posição especial "Estoque não organizado" usada pelo cadastro de produto
-// com quantidade inicial (server/routes/logistica/produtos.js): o produto
-// recém-criado entra ali como uma ENTRADA normal, e o usuário organiza
-// depois com uma transferência de verdade.
+// com quantidade inicial (server/routes/logistica/produtos.js) e pela
+// conferência de entrada: o produto recém-chegado entra ali como uma
+// ENTRADA normal, e o usuário organiza depois com uma transferência de
+// verdade.
 function buscarPosicaoDeRecebimento() {
   return db
     .prepare(
       `SELECT pos.id FROM logistics_positions pos
        JOIN logistics_racks rk ON rk.id = pos.rack_id
        WHERE rk.is_holding_area = 1
+       LIMIT 1`
+    )
+    .get();
+}
+
+// Posição especial "Área de separação" usada pela separação de pedidos:
+// recebe a reserva (transferência) de cada item já separado até a
+// expedição consolidar tudo numa única saída.
+function buscarPosicaoDeSeparacao() {
+  return db
+    .prepare(
+      `SELECT pos.id FROM logistics_positions pos
+       JOIN logistics_racks rk ON rk.id = pos.rack_id
+       WHERE rk.is_separation_area = 1
        LIMIT 1`
     )
     .get();
@@ -231,5 +258,10 @@ module.exports = {
   registrarSaidaTx,
   registrarTransferenciaTx,
   registrarAjusteTx,
+  entradaCore,
+  saidaCore,
+  transferenciaCore,
+  ajusteCore,
   buscarPosicaoDeRecebimento,
+  buscarPosicaoDeSeparacao,
 };

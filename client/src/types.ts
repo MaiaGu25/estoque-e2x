@@ -410,6 +410,7 @@ export type LogMontante = {
   color: string;
   active: number;
   is_holding_area: number;
+  is_separation_area: number;
   sides: LogLado[];
 };
 
@@ -498,4 +499,211 @@ export type LogOrcamentoItem = {
   product_name: string;
   product_unit: string;
   product_notes: string;
+};
+
+// ---- Logística: Conferência de entrada / Separação de pedidos ----
+
+export type LogSerialStatus =
+  | "estoque_nao_organizado"
+  | "disponivel"
+  | "reservado"
+  | "em_separacao"
+  | "expedido"
+  | "avariado"
+  | "bloqueado"
+  | "devolvido";
+
+export type LogSerial = {
+  id: number;
+  valor: string;
+  valor_normalizado: string;
+  product_id: number;
+  product_code?: string;
+  product_name?: string;
+  status: LogSerialStatus;
+  position_id: number | null;
+  position_code?: string | null;
+  position_name?: string | null;
+  pedido_entrada_id: number | null;
+  pedido_saida_id: number | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LogConferenciaStatus =
+  | "aguardando_conferencia"
+  | "em_conferencia"
+  | "conferido_parcialmente"
+  | "com_divergencia"
+  | "conferido"
+  | "cancelado";
+
+export type LogConferencia = {
+  id: number;
+  numero: string;
+  fornecedor_nome: string;
+  fornecedor_contato: string;
+  status: LogConferenciaStatus;
+  responsavel: string;
+  observacao: string;
+  created_at: string;
+  updated_at: string;
+  finalizado_em: string | null;
+  total_itens?: number;
+  divergencias_abertas?: number;
+};
+
+export type LogConferenciaItem = {
+  id: number;
+  conferencia_id: number;
+  product_id: number;
+  product_code: string;
+  product_name: string;
+  product_unit: string;
+  quantidade_esperada: number;
+  quantidade_conferida: number;
+  exige_serial: number;
+  observacao: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LogDivergenciaStatus = "aberta" | "resolvida";
+
+export type LogConferenciaDivergenciaTipo =
+  | "quantidade_divergente"
+  | "produto_errado"
+  | "serial_duplicado"
+  | "serial_de_outro_produto"
+  | "avariado"
+  | "item_nao_identificado"
+  | "outro";
+
+export type LogConferenciaDivergencia = {
+  id: number;
+  conferencia_id: number;
+  item_id: number | null;
+  product_code?: string | null;
+  product_name?: string | null;
+  tipo: LogConferenciaDivergenciaTipo;
+  descricao: string;
+  status: LogDivergenciaStatus;
+  resolvido_por: number | null;
+  resolvido_em: string | null;
+  resolucao: string;
+  created_at: string;
+};
+
+export type LogEvento = {
+  id: number;
+  tipo: string;
+  descricao: string;
+  dados: string;
+  user_id: number | null;
+  user_name: string;
+  created_at: string;
+};
+
+export type LogCanalPedido = "manual" | "vendedor" | "mercado_livre" | "shopee" | "outro";
+export type LogPrioridade = "baixa" | "normal" | "alta" | "urgente";
+
+export type LogPedidoSaidaStatus =
+  | "aguardando_separacao"
+  | "em_separacao"
+  | "separado_parcialmente"
+  | "com_divergencia"
+  | "separado"
+  | "aguardando_expedicao"
+  | "expedido"
+  | "cancelado";
+
+export type LogPedidoSaida = {
+  id: number;
+  numero: string;
+  canal: LogCanalPedido;
+  canal_conta: string;
+  id_externo: string | null;
+  numero_visivel: string;
+  data_pedido: string | null;
+  cliente_nome: string;
+  vendedor: string;
+  status_externo: string;
+  ultima_sincronizacao: string | null;
+  status: LogPedidoSaidaStatus;
+  prioridade: LogPrioridade;
+  responsavel: string;
+  observacao: string;
+  created_at: string;
+  updated_at: string;
+  expedido_em: string | null;
+  total_itens?: number;
+  divergencias_abertas?: number;
+};
+
+export type LogSeparacaoAlocacao = {
+  id: number;
+  pedido_item_id: number;
+  product_id: number;
+  position_id: number;
+  position_code: string;
+  position_name: string;
+  quantidade: number;
+  serial_id: number | null;
+  serial_valor: string | null;
+  estornado: number;
+  expedido: number;
+  created_at: string;
+};
+
+export type LogPedidoSaidaItem = {
+  id: number;
+  pedido_id: number;
+  product_id: number;
+  product_code: string;
+  product_name: string;
+  product_unit: string;
+  variacao: string;
+  quantidade_solicitada: number;
+  quantidade_separada: number;
+  exige_serial: number;
+  observacao: string;
+  alocacoes?: LogSeparacaoAlocacao[];
+};
+
+export type LogSeparacaoDivergenciaTipo =
+  | "nao_encontrado"
+  | "saldo_insuficiente"
+  | "localizacao_errada"
+  | "avariado"
+  | "serial_invalido"
+  | "foto_divergente"
+  | "quantidade_divergente"
+  | "sku_errado"
+  | "outro";
+
+export type LogSeparacaoDivergencia = {
+  id: number;
+  pedido_id: number;
+  item_id: number | null;
+  product_code?: string | null;
+  product_name?: string | null;
+  tipo: LogSeparacaoDivergenciaTipo;
+  descricao: string;
+  status: LogDivergenciaStatus;
+  resolvido_por: number | null;
+  resolvido_em: string | null;
+  resolucao: string;
+  created_at: string;
+};
+
+export type LogPosicaoSugestao = {
+  position_id: number;
+  quantity: number;
+  position_code: string;
+  position_name: string;
+  side_code: string;
+  side_name: string;
+  rack_name: string;
+  cobreSozinha: boolean;
 };

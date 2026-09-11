@@ -848,6 +848,234 @@ CREATE INDEX IF NOT EXISTS idx_sales_quotes_status ON sales_quotes(status);
 CREATE INDEX IF NOT EXISTS idx_sales_quote_items_quote ON sales_quote_items(quote_id);
 `);
 
+// ---- Logística: Conferência de entrada / Separação de pedidos ----
+// Reaproveita logistics_products/logistics_positions e as transações de
+// logisticaMovimentos.js (entrada/saída/transferência com trava otimista)
+// para nunca duplicar a lógica de saldo - conferência e separação só
+// decidem QUANDO chamar cada movimento e registram o pedido/itens/eventos
+// em torno dele.
+db.exec(`
+-- Número de série rastreado individualmente. valor_normalizado tem índice
+-- único (maiúsculo, sem espaço nas pontas) para a duplicidade nunca
+-- depender só de checagem no frontend.
+CREATE TABLE IF NOT EXISTS logistics_serials (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  valor TEXT NOT NULL,
+  valor_normalizado TEXT NOT NULL UNIQUE,
+  product_id INTEGER NOT NULL REFERENCES logistics_products(id),
+  status TEXT NOT NULL CHECK(status IN (
+    'estoque_nao_organizado','disponivel','reservado','em_separacao',
+    'expedido','avariado','bloqueado','devolvido'
+  )) DEFAULT 'disponivel',
+  position_id INTEGER REFERENCES logistics_positions(id),
+  pedido_entrada_id INTEGER,
+  pedido_saida_id INTEGER,
+  notes TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+
+-- Pedido de entrada (fornecedor) que precisa ser conferido antes de virar
+-- estoque de verdade.
+CREATE TABLE IF NOT EXISTS logistics_conferencias (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero TEXT NOT NULL UNIQUE,
+  fornecedor_nome TEXT NOT NULL DEFAULT '',
+  fornecedor_contato TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN (
+    'aguardando_conferencia','em_conferencia','conferido_parcialmente',
+    'com_divergencia','conferido','cancelado'
+  )) DEFAULT 'aguardando_conferencia',
+  responsavel TEXT NOT NULL DEFAULT '',
+  observacao TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  finalizado_em TEXT
+);
+
+CREATE TABLE IF NOT EXISTS logistics_conferencia_itens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conferencia_id INTEGER NOT NULL REFERENCES logistics_conferencias(id),
+  product_id INTEGER NOT NULL REFERENCES logistics_products(id),
+  quantidade_esperada REAL NOT NULL,
+  quantidade_conferida REAL NOT NULL DEFAULT 0,
+  exige_serial INTEGER NOT NULL DEFAULT 0,
+  observacao TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS logistics_conferencia_divergencias (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conferencia_id INTEGER NOT NULL REFERENCES logistics_conferencias(id),
+  item_id INTEGER REFERENCES logistics_conferencia_itens(id),
+  tipo TEXT NOT NULL CHECK(tipo IN (
+    'quantidade_divergente','produto_errado','serial_duplicado',
+    'serial_de_outro_produto','avariado','item_nao_identificado','outro'
+  )),
+  descricao TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('aberta','resolvida')) DEFAULT 'aberta',
+  resolvido_por INTEGER REFERENCES users(id),
+  resolvido_em TEXT,
+  resolucao TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS logistics_conferencia_eventos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conferencia_id INTEGER NOT NULL REFERENCES logistics_conferencias(id),
+  tipo TEXT NOT NULL,
+  descricao TEXT NOT NULL DEFAULT '',
+  dados TEXT NOT NULL DEFAULT '',
+  user_id INTEGER REFERENCES users(id),
+  user_name TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+-- Pedido de saída (venda/marketplace/manual) a ser separado. Um modelo só
+-- para todos os canais (adaptador): canal/canal_conta/id_externo guardam a
+-- origem externa sem nenhuma integração de verdade implementada agora -
+-- só o formato pronto para o dia que existir. id_externo fica NULL em
+-- pedidos manuais (o índice único do SQLite não considera NULL == NULL,
+-- então vários pedidos manuais convivem sem conflito).
+CREATE TABLE IF NOT EXISTS logistics_pedidos_saida (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero TEXT NOT NULL UNIQUE,
+  canal TEXT NOT NULL CHECK(canal IN ('manual','vendedor','mercado_livre','shopee','outro')) DEFAULT 'manual',
+  canal_conta TEXT NOT NULL DEFAULT '',
+  id_externo TEXT,
+  numero_visivel TEXT NOT NULL DEFAULT '',
+  data_pedido TEXT,
+  cliente_nome TEXT NOT NULL DEFAULT '',
+  vendedor TEXT NOT NULL DEFAULT '',
+  status_externo TEXT NOT NULL DEFAULT '',
+  payload_origem TEXT NOT NULL DEFAULT '',
+  ultima_sincronizacao TEXT,
+  status TEXT NOT NULL CHECK(status IN (
+    'aguardando_separacao','em_separacao','separado_parcialmente',
+    'com_divergencia','separado','aguardando_expedicao','expedido','cancelado'
+  )) DEFAULT 'aguardando_separacao',
+  prioridade TEXT NOT NULL CHECK(prioridade IN ('baixa','normal','alta','urgente')) DEFAULT 'normal',
+  responsavel TEXT NOT NULL DEFAULT '',
+  observacao TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  expedido_em TEXT,
+  UNIQUE(canal, canal_conta, id_externo)
+);
+
+CREATE TABLE IF NOT EXISTS logistics_pedido_saida_itens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pedido_id INTEGER NOT NULL REFERENCES logistics_pedidos_saida(id),
+  product_id INTEGER NOT NULL REFERENCES logistics_products(id),
+  variacao TEXT NOT NULL DEFAULT '',
+  quantidade_solicitada REAL NOT NULL,
+  quantidade_separada REAL NOT NULL DEFAULT 0,
+  exige_serial INTEGER NOT NULL DEFAULT 0,
+  observacao TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Uma linha por unidade/posição retirada durante a separação - é o que
+-- permite devolver exatamente para a posição de origem em caso de
+-- cancelamento (estornado=1 marca uma alocação já revertida ou já
+-- consumida na expedição).
+CREATE TABLE IF NOT EXISTS logistics_separacao_alocacoes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pedido_item_id INTEGER NOT NULL REFERENCES logistics_pedido_saida_itens(id),
+  product_id INTEGER NOT NULL REFERENCES logistics_products(id),
+  position_id INTEGER NOT NULL REFERENCES logistics_positions(id),
+  quantidade REAL NOT NULL,
+  serial_id INTEGER REFERENCES logistics_serials(id),
+  estornado INTEGER NOT NULL DEFAULT 0,
+  estornado_por INTEGER REFERENCES users(id),
+  estornado_em TEXT,
+  expedido INTEGER NOT NULL DEFAULT 0,
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS logistics_separacao_divergencias (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pedido_id INTEGER NOT NULL REFERENCES logistics_pedidos_saida(id),
+  item_id INTEGER REFERENCES logistics_pedido_saida_itens(id),
+  tipo TEXT NOT NULL CHECK(tipo IN (
+    'nao_encontrado','saldo_insuficiente','localizacao_errada','avariado',
+    'serial_invalido','foto_divergente','quantidade_divergente','sku_errado','outro'
+  )),
+  descricao TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('aberta','resolvida')) DEFAULT 'aberta',
+  resolvido_por INTEGER REFERENCES users(id),
+  resolvido_em TEXT,
+  resolucao TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS logistics_separacao_eventos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pedido_id INTEGER NOT NULL REFERENCES logistics_pedidos_saida(id),
+  tipo TEXT NOT NULL,
+  descricao TEXT NOT NULL DEFAULT '',
+  dados TEXT NOT NULL DEFAULT '',
+  user_id INTEGER REFERENCES users(id),
+  user_name TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_logistics_serials_product ON logistics_serials(product_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_serials_status ON logistics_serials(status);
+CREATE INDEX IF NOT EXISTS idx_logistics_conferencias_status ON logistics_conferencias(status);
+CREATE INDEX IF NOT EXISTS idx_logistics_conferencia_itens_conferencia ON logistics_conferencia_itens(conferencia_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_conferencia_divergencias_conferencia ON logistics_conferencia_divergencias(conferencia_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_conferencia_eventos_conferencia ON logistics_conferencia_eventos(conferencia_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_pedidos_saida_status ON logistics_pedidos_saida(status);
+CREATE INDEX IF NOT EXISTS idx_logistics_pedido_saida_itens_pedido ON logistics_pedido_saida_itens(pedido_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_separacao_alocacoes_item ON logistics_separacao_alocacoes(pedido_item_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_separacao_divergencias_pedido ON logistics_separacao_divergencias(pedido_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_separacao_eventos_pedido ON logistics_separacao_eventos(pedido_id);
+`);
+
+// logistics_racks existia sem a área de separação (posição virtual usada
+// para reservar o que já foi separado até a expedição); adiciona a coluna
+// e cria o montante especial uma única vez, do mesmo jeito que o
+// "Estoque não organizado" acima - nunca aparece no mapa, não pode ser
+// excluído nem editado.
+if (!columnExists("logistics_racks", "is_separation_area")) {
+  db.exec("ALTER TABLE logistics_racks ADD COLUMN is_separation_area INTEGER NOT NULL DEFAULT 0");
+}
+{
+  const andarPadrao = db.prepare("SELECT id FROM logistics_floors ORDER BY display_order, id LIMIT 1").get();
+  const areaSeparacao = db.prepare("SELECT id FROM logistics_racks WHERE is_separation_area = 1").get();
+  if (andarPadrao && !areaSeparacao) {
+    const now = nowStamp();
+    const rack = db
+      .prepare(
+        `INSERT INTO logistics_racks (floor_id,code,name,x,y,width,height,rotation,color,active,is_separation_area,created_at,updated_at)
+         VALUES (?,'AREA-SEPARACAO','Área de separação',0,0,1,1,0,'',1,1,?,?)`
+      )
+      .run(andarPadrao.id, now, now);
+    const side = db
+      .prepare(
+        `INSERT INTO logistics_rack_sides (rack_id,code,name,shelves_count,display_order,active,created_at,updated_at)
+         VALUES (?,'A','Separação',1,0,1,?,?)`
+      )
+      .run(rack.lastInsertRowid, now, now);
+    db.prepare(
+      `INSERT INTO logistics_positions (rack_id,side_id,shelf_number,code,name,active,blocked,created_at,updated_at)
+       VALUES (?,?,1,'AREA-SEPARACAO-A-P001','Separação',1,0,?,?)`
+    ).run(rack.lastInsertRowid, side.lastInsertRowid, now, now);
+  }
+}
+
 function getMeta(key) {
   const row = db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key);
   return row ? row.value : null;

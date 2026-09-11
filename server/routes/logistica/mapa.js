@@ -287,6 +287,9 @@ router.delete("/montantes/:id", requireAdmin, (req, res) => {
   if (rack.is_holding_area) {
     return res.status(400).json({ error: "Esse é o estoque de recebimento usado pelo cadastro de produtos e não pode ser excluído." });
   }
+  if (rack.is_separation_area) {
+    return res.status(400).json({ error: "Essa é a área de separação usada pela Separação de pedidos e não pode ser excluída." });
+  }
   if (temUso("rack", id)) {
     return res.status(400).json({ error: "Esse montante já tem posições com estoque ou histórico. Inative em vez de excluir." });
   }
@@ -421,9 +424,12 @@ router.delete("/lados/:id", requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const side = db.prepare("SELECT * FROM logistics_rack_sides WHERE id = ?").get(id);
   if (!side) return res.status(404).json({ error: "Lado não encontrado." });
-  const rack = db.prepare("SELECT is_holding_area FROM logistics_racks WHERE id = ?").get(side.rack_id);
+  const rack = db.prepare("SELECT is_holding_area, is_separation_area FROM logistics_racks WHERE id = ?").get(side.rack_id);
   if (rack?.is_holding_area) {
     return res.status(400).json({ error: "Esse lado é usado pelo cadastro de produtos e não pode ser excluído." });
+  }
+  if (rack?.is_separation_area) {
+    return res.status(400).json({ error: "Esse lado é usado pela Separação de pedidos e não pode ser excluído." });
   }
   if (temUso("side", id)) {
     return res.status(400).json({ error: "Esse lado já tem posições com estoque ou histórico. Inative em vez de excluir." });
