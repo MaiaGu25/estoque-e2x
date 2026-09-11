@@ -230,51 +230,10 @@ export type TestesStats = {
   porResponsavel: { responsible: string; quantidade: number }[];
 };
 
-// ---- RMA / SAC ----
-
-export type RmaStatus = "aguardando_devolucao" | "recebido" | "em_inspecao" | "concluido";
-export type RmaCulpa = "nossa" | "cliente";
-export type RmaDesfecho = "reembolso_cliente" | "cobranca_plataforma";
-export type RmaDisputaStatus = "nao_aberta" | "aberta" | "ganha" | "perdida";
-
-export type RmaCaso = {
-  id: number;
-  numero: string;
-  plataforma: string;
-  pedido: string;
-  produto: string;
-  cliente: string;
-  motivo_cliente: string;
-  status: RmaStatus;
-  culpa: RmaCulpa | null;
-  laudo_tecnico: string;
-  desfecho: RmaDesfecho | null;
-  valor: number | null;
-  disputa_status: RmaDisputaStatus | null;
-  tecnico_responsavel: string;
-  created_at: string;
-  updated_at: string;
-  resolved_at: string | null;
-};
-
-export type RmaEvento = {
-  id: number;
-  caso_id: number;
-  tipo: string;
-  texto: string;
-  foto: string | null;
-  responsible: string;
-  created_at: string;
-};
-
-export type RmaStats = {
-  porStatus: { status: RmaStatus; n: number }[];
-  abertosHoje: number;
-  totalMes: number;
-  reembolsadoMes: number;
-  cobradoMes: number;
-  porPlataforma: { plataforma: string; n: number }[];
-};
+// RMA / SAC tem seus próprios tipos em client/src/rma/types.ts (mesmo
+// padrão de client/src/marketplace/types.ts) - o módulo foi reformulado
+// por completo, então os tipos antigos (RmaCaso/RmaEvento/RmaStats) não
+// existem mais.
 
 // ---- Peças / Fornecedores ----
 
