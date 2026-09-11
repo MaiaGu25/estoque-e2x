@@ -17,5 +17,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# env files (o .example é só documentação de nomes de variável, sem
+# segredo nenhum, e precisa continuar versionado)
 .env*
+!.env.example

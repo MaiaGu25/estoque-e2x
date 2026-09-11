@@ -11,10 +11,11 @@ import PecasFornecedorApp from "./PecasFornecedorApp";
 import LogisticaApp from "./logistica/LogisticaApp";
 import VendasApp from "./logistica/VendasApp";
 import CentralFotosApp from "./CentralFotosApp";
+import MarketplaceApp from "./marketplace/MarketplaceApp";
 import type { User } from "./types";
 
-type AppId = "estoque" | "tecnicos" | "testes" | "rma" | "pecasFornecedor" | "logistica" | "vendas" | "centralFotos";
-const VALID: AppId[] = ["estoque", "tecnicos", "testes", "rma", "pecasFornecedor", "logistica", "vendas", "centralFotos"];
+type AppId = "estoque" | "tecnicos" | "testes" | "rma" | "pecasFornecedor" | "logistica" | "vendas" | "centralFotos" | "marketplace";
+const VALID: AppId[] = ["estoque", "tecnicos", "testes", "rma", "pecasFornecedor", "logistica", "vendas", "centralFotos", "marketplace"];
 
 function readHash(): AppId | null {
   const id = window.location.hash.replace("#/", "");
@@ -72,5 +73,20 @@ export default function App() {
   if (active === "logistica") return <LogisticaApp user={user} onLogout={logout} onHome={home} />;
   if (active === "vendas") return <VendasApp user={user} onLogout={logout} onHome={home} />;
   if (active === "centralFotos") return <CentralFotosApp user={user} onLogout={logout} onHome={home} />;
+  if (active === "marketplace") {
+    // Reforça no próprio app o que a API já exige (requireAdmin em toda
+    // rota /api/marketplace) - nunca confiar só em esconder o card do Hub.
+    if (user.role !== "admin") {
+      return (
+        <div className="loading">
+          <p>Só administradores podem acessar o módulo Marketplace.</p>
+          <button className="secondary" onClick={home} style={{ marginTop: 12 }}>
+            Voltar
+          </button>
+        </div>
+      );
+    }
+    return <MarketplaceApp user={user} onLogout={logout} onHome={home} />;
+  }
   return null;
 }

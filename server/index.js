@@ -30,6 +30,8 @@ const pecasFornecedorRoutes = require("./routes/pecasFornecedor");
 const reservadosRoutes = require("./routes/reservados");
 const logisticaRoutes = require("./routes/logistica");
 const centralFotosRoutes = require("./routes/centralFotos");
+const marketplaceRoutes = require("./routes/marketplace");
+const marketplaceSyncJob = require("./jobs/marketplaceSync");
 
 const app = express();
 app.disable("x-powered-by");
@@ -74,6 +76,7 @@ app.use("/api/rma", rmaRoutes);
 app.use("/api/pecas-fornecedor", pecasFornecedorRoutes);
 app.use("/api/reservados", reservadosRoutes);
 app.use("/api/logistica", logisticaRoutes);
+app.use("/api/marketplace", marketplaceRoutes);
 
 const clientDist = path.join(__dirname, "..", "dist", "client");
 if (fs.existsSync(clientDist)) {
@@ -101,4 +104,5 @@ realtime.init(server);
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Estoque E2X rodando em http://localhost:${PORT}`);
+  marketplaceSyncJob.iniciar();
 });
