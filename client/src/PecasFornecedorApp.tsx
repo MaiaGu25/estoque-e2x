@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
-  Archive, ArrowLeft, BarChart3, CheckCircle2, ClipboardList, FileSpreadsheet, LogOut, Menu,
-  MessageSquarePlus, Plus, RefreshCw, Search, ShieldCheck, Trash2, Truck,
+  Archive, ArrowLeft, BarChart3, CheckCircle2, CircleDashed, ClipboardList, Clock5, FileSpreadsheet, LogOut, Menu,
+  MessageSquarePlus, Plus, RefreshCw, ScanSearch, Search, ShieldCheck, Trash2, Truck,
   TriangleAlert, X, XCircle,
 } from "lucide-react";
 import { api } from "./api";
@@ -36,12 +36,20 @@ const STATUS_LABEL: Record<PedidoFornecedorStatus, string> = {
   concluido: "Concluído",
 };
 const STATUS_CLASS: Record<PedidoFornecedorStatus, string> = {
-  em_aberto: "warn",
-  registrado: "",
-  em_analise: "transfer",
-  revisar: "warn",
-  liberado: "adjust",
-  concluido: "ok",
+  em_aberto: "pf-badge-em_aberto",
+  registrado: "pf-badge-registrado",
+  em_analise: "pf-badge-em_analise",
+  revisar: "pf-badge-revisar",
+  liberado: "pf-badge-liberado",
+  concluido: "pf-badge-concluido",
+};
+const STATUS_ICON: Record<PedidoFornecedorStatus, typeof Clock5> = {
+  em_aberto: Clock5,
+  registrado: CircleDashed,
+  em_analise: ScanSearch,
+  revisar: TriangleAlert,
+  liberado: Truck,
+  concluido: CheckCircle2,
 };
 
 const DECISAO_LABEL: Record<PecaFornecedorDecisao, string> = {
@@ -204,13 +212,34 @@ function Stat({ icon: Icon, label, value, note, alert }: { icon: any; label: str
 }
 
 function StatusBadge({ status }: { status: PedidoFornecedorStatus }) {
-  return <span className={`status ${STATUS_CLASS[status]}`}>{STATUS_LABEL[status]}</span>;
+  const Icon = STATUS_ICON[status];
+  return (
+    <span className={`pf-badge ${STATUS_CLASS[status]}`}>
+      <Icon strokeWidth={3} />
+      {STATUS_LABEL[status]}
+    </span>
+  );
 }
 
-const DECISAO_CLASS: Record<PecaFornecedorDecisao, string> = { pendente: "", aceita: "ok", recusada: "warn" };
+const DECISAO_CLASS: Record<PecaFornecedorDecisao, string> = {
+  pendente: "pf-badge-pendente",
+  aceita: "pf-badge-aceita",
+  recusada: "pf-badge-recusada",
+};
+const DECISAO_ICON: Record<PecaFornecedorDecisao, typeof Clock5> = {
+  pendente: Clock5,
+  aceita: CheckCircle2,
+  recusada: XCircle,
+};
 
 function DecisaoBadge({ decisao }: { decisao: PecaFornecedorDecisao }) {
-  return <span className={`status ${DECISAO_CLASS[decisao]}`}>{DECISAO_LABEL[decisao]}</span>;
+  const Icon = DECISAO_ICON[decisao];
+  return (
+    <span className={`pf-badge ${DECISAO_CLASS[decisao]}`}>
+      <Icon strokeWidth={3} />
+      {DECISAO_LABEL[decisao]}
+    </span>
+  );
 }
 
 // Tiquinho verde/vermelho pra marcar se o fornecedor aceitou ou recusou
