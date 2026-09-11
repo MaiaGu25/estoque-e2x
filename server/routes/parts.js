@@ -1,7 +1,7 @@
 const express = require("express");
 const { db } = require("../db");
 const { requireAuth, requireAdmin } = require("../auth");
-const { nowStamp } = require("../util");
+const { nowStamp, coluna } = require("../util");
 const { broadcast } = require("../realtime");
 
 const router = express.Router();
@@ -60,7 +60,7 @@ router.patch("/:id", requireAdmin, (req, res) => {
   };
   for (const [key, column] of Object.entries(map)) {
     if (typeof b[key] === "string") {
-      fields.push(`${column} = ?`);
+      fields.push(`${coluna(column)} = ?`);
       values.push(b[key].trim());
     }
   }

@@ -136,8 +136,8 @@ router.get("/:id/foto/:tipo", (req, res) => {
   const teste = db.prepare("SELECT * FROM testes WHERE id = ?").get(Number(req.params.id));
   if (!teste) return res.status(404).end();
   const relativo = req.params.tipo === "teste" ? teste.foto_teste : teste.foto_serial;
-  const caminho = path.join(FOTOS_DIR, relativo);
-  if (!caminho.startsWith(FOTOS_DIR) || !fs.existsSync(caminho)) return res.status(404).end();
+  const caminho = path.resolve(path.join(FOTOS_DIR, relativo || ""));
+  if ((caminho !== FOTOS_DIR && !caminho.startsWith(FOTOS_DIR + path.sep)) || !fs.existsSync(caminho)) return res.status(404).end();
   res.sendFile(caminho);
 });
 

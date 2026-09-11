@@ -33,7 +33,7 @@ function issueSession(res, user) {
   const token = sign({ uid: user.id, v: user.session_version });
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: "strict",
     secure: COOKIE_SECURE,
     maxAge: MAX_AGE_MS,
   });

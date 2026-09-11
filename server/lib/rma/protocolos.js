@@ -1,5 +1,6 @@
+const crypto = require("crypto");
 const { db, transaction } = require("../../db");
-const { nowStamp, normalizarNumero, normalizarDocumento } = require("../../util");
+const { nowStamp, normalizarNumero, normalizarDocumento, coluna: validarColuna } = require("../../util");
 const opcoes = require("./opcoes");
 const clientes = require("./clientes");
 const historico = require("./auditoria");
@@ -56,7 +57,7 @@ const TIPO_OPCAO_DO_CAMPO = {
 function gerarNumeroProtocolo() {
   const hoje = nowStamp().slice(0, 10).replace(/-/g, "");
   for (let tentativa = 0; tentativa < 50; tentativa += 1) {
-    const sufixo = String(Math.floor(Math.random() * 100000)).padStart(5, "0");
+    const sufixo = String(crypto.randomInt(0, 100000)).padStart(5, "0");
     const numero = `RMA-${hoje}-${sufixo}`;
     if (!db.prepare("SELECT 1 FROM rma_protocolos WHERE numero_protocolo = ?").get(numero)) return numero;
   }
@@ -166,13 +167,13 @@ function criarCore({ dados, cliente, user, confirmarDuplicidade }) {
 
   for (const campo of CAMPOS_NUMERO) {
     const valorOriginal = String(dados[campo] || "").trim();
-    colunas.push(COLUNA_NUMERO[campo], `${COLUNA_NUMERO[campo]}_normalizado`);
+    colunas.push(validarColuna(COLUNA_NUMERO[campo]), `${validarColuna(COLUNA_NUMERO[campo])}_normalizado`);
     valores.push(valorOriginal, normalizarNumero(valorOriginal));
   }
   for (const [campo, coluna] of Object.entries(CAMPOS_PROTOCOLO)) {
     if (campo === "status") continue;
     if (dados[campo] === undefined) continue;
-    colunas.push(coluna);
+    colunas.push(validarColuna(coluna));
     valores.push(valorColunaProtocolo(campo, dados[campo]));
   }
 
@@ -206,7 +207,7 @@ const atualizar = transaction(({ id, dados, user }) => {
     const valorOriginal = String(dados[campo] || "").trim();
     anterior[coluna] = atual[coluna];
     novo[coluna] = valorOriginal;
-    setClauses.push(`${coluna} = ?`, `${coluna}_normalizado = ?`);
+    setClauses.push(`${validarColuna(coluna)} = ?`, `${coluna}_normalizado = ?`);
     valores.push(valorOriginal, normalizarNumero(valorOriginal));
   }
   for (const [campo, coluna] of Object.entries(CAMPOS_PROTOCOLO)) {
@@ -214,7 +215,7 @@ const atualizar = transaction(({ id, dados, user }) => {
     const valor = valorColunaProtocolo(campo, dados[campo]);
     anterior[coluna] = atual[coluna];
     novo[coluna] = valor;
-    setClauses.push(`${coluna} = ?`);
+    setClauses.push(`${validarColuna(coluna)} = ?`);
     valores.push(valor);
   }
 

@@ -36,4 +36,18 @@ function normalizarDocumento(valor) {
   return String(valor || "").replace(/\D/g, "");
 }
 
-module.exports = { nowStamp, saveBase64Image, normalizarNumero, normalizarDocumento };
+// Trava de segurança para os trechos de SQL montados dinamicamente (UPDATE
+// ... SET campo = ? escolhido em tempo de execução): o nome da coluna nunca
+// vem direto do que o usuário mandou, sempre de um mapa fixo no código, mas
+// essa checagem garante isso também em tempo de execução - se algum dia um
+// nome de coluna inválido chegar aqui (bug ou mapa mal escrito), a query
+// nunca roda, só estoura erro.
+const IDENTIFICADOR_SQL = /^[A-Za-z_][A-Za-z0-9_]*$/;
+function coluna(nome) {
+  if (typeof nome !== "string" || !IDENTIFICADOR_SQL.test(nome)) {
+    throw new Error(`Nome de coluna inválido: ${nome}`);
+  }
+  return nome;
+}
+
+module.exports = { nowStamp, saveBase64Image, normalizarNumero, normalizarDocumento, coluna };

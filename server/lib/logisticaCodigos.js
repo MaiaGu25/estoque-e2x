@@ -3,7 +3,8 @@
 // o código final digitado pelo usuário é sempre validado/único no banco.
 function proximoCodigo(prefixo, existentes) {
   let max = 0;
-  const re = new RegExp(`^${prefixo}(\\d+)$`, "i");
+  const prefixoEscapado = String(prefixo).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`^${prefixoEscapado}(\\d+)$`, "i");
   for (const c of existentes) {
     const m = re.exec(c);
     if (m) max = Math.max(max, parseInt(m[1], 10));

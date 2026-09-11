@@ -1,7 +1,7 @@
 const express = require("express");
 const { db } = require("../../db");
 const { requireAdmin } = require("../../auth");
-const { nowStamp } = require("../../util");
+const { nowStamp, coluna } = require("../../util");
 const { broadcast } = require("../../realtime");
 const { registrarAuditoria } = require("../../lib/logisticaAudit");
 const { registrarEntradaTx, buscarPosicaoDeRecebimento } = require("../../lib/logisticaMovimentos");
@@ -204,7 +204,7 @@ router.patch("/:id", requireAdmin, (req, res) => {
     if (typeof b[key] === "string" && b[key].trim() !== produto[column]) {
       antes[column] = produto[column];
       depois[column] = b[key].trim();
-      fields.push(`${column} = ?`);
+      fields.push(`${coluna(column)} = ?`);
       values.push(b[key].trim());
     }
   }

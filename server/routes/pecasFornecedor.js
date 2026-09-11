@@ -1,7 +1,7 @@
 const express = require("express");
 const { db, transaction, getMeta, setMeta } = require("../db");
 const { requireAuth, requireAdmin } = require("../auth");
-const { nowStamp } = require("../util");
+const { nowStamp, coluna } = require("../util");
 const { broadcast } = require("../realtime");
 const { gerarPlanilha } = require("../xlsx");
 
@@ -121,7 +121,7 @@ router.patch("/fornecedores/:id", (req, res) => {
   const values = [];
   for (const key of ["nome", "identificacao", "contato", "endereco", "numero", "cep", "cidade", "estado"]) {
     if (typeof b[key] === "string") {
-      fields.push(`${key} = ?`);
+      fields.push(`${coluna(key)} = ?`);
       values.push(b[key].trim());
     }
   }
@@ -559,7 +559,7 @@ router.patch("/pecas/:id", (req, res) => {
     observacoes: "observacoes",
   })) {
     if (typeof b[key] === "string" && b[key] !== peca[column]) {
-      fields.push(`${column} = ?`);
+      fields.push(`${coluna(column)} = ?`);
       values.push(b[key].trim());
     }
   }
