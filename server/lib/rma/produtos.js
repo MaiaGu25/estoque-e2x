@@ -1,5 +1,5 @@
 const { db, transaction } = require("../../db");
-const { nowStamp } = require("../../util");
+const { nowStamp, coluna: validarColuna } = require("../../util");
 const opcoes = require("./opcoes");
 const historico = require("./auditoria");
 
@@ -91,7 +91,7 @@ const editar = transaction(({ id, dados, user }) => {
   const valores = [];
   for (const [coluna, valor] of Object.entries(campos)) {
     if (valor === undefined) continue;
-    setClauses.push(`${coluna} = ?`);
+    setClauses.push(`${validarColuna(coluna)} = ?`);
     valores.push(typeof valor === "number" || coluna === "quantidade" || coluna.startsWith("valor_") ? Number(valor) || null : String(valor || "").trim());
   }
   if (!setClauses.length) throw new Error("Nada para atualizar.");

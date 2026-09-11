@@ -21,8 +21,9 @@ function buscarPorId(id) {
 // (mesma trava contra path traversal que o módulo antigo já usava).
 function caminhoSeguro(anexo) {
   if (!anexo) return null;
+  const base = path.resolve(ANEXOS_DIR);
   const resolvido = path.resolve(anexo.caminho_arquivo);
-  if (!resolvido.startsWith(path.resolve(ANEXOS_DIR))) return null;
+  if (resolvido !== base && !resolvido.startsWith(base + path.sep)) return null;
   if (!fs.existsSync(resolvido)) return null;
   return resolvido;
 }

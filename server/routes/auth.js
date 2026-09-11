@@ -45,7 +45,15 @@ router.get("/me", requireAuth, (req, res) => {
   res.json({ user: publicUserFields(req.user) });
 });
 
-router.post("/change-password", requireAuth, (req, res) => {
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Muitas tentativas. Aguarde alguns minutos e tente novamente." },
+});
+
+router.post("/change-password", requireAuth, changePasswordLimiter, (req, res) => {
   const current = String(req.body?.currentPassword || "");
   const next = String(req.body?.newPassword || "");
   if (next.length < 8) {

@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs/promises");
 const path = require("path");
 const { db, transaction, nowStamp, ORIGINAL_DIR, OPTIMIZED_DIR, THUMBNAILS_DIR } = require("./db");
+const { coluna: validarColuna } = require("../util");
 const { originalStorage, optimizedStorage, thumbnailStorage } = require("./storage");
 const { processarImagem, LIMITES } = require("./processing");
 const { validarCamposProduto, normalizarSku, limparTexto, DadosInvalidosError } = require("./validation");
@@ -237,7 +238,7 @@ function atualizarProduto(id, body, user) {
       const valor = limparTexto(body[campo]);
       if (campo === "nome" && !valor) throw new DadosInvalidosError("O nome não pode ficar vazio.");
       if (valor !== atual[coluna]) {
-        fields.push(`${coluna} = ?`);
+        fields.push(`${validarColuna(coluna)} = ?`);
         values.push(valor);
         alteracoesSimples[campo] = { de: atual[coluna], para: valor };
       }

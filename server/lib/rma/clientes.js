@@ -1,5 +1,5 @@
 const { db, transaction } = require("../../db");
-const { nowStamp, normalizarDocumento } = require("../../util");
+const { nowStamp, normalizarDocumento, coluna: validarColuna } = require("../../util");
 
 function buscarPorId(id) {
   return db.prepare("SELECT * FROM rma_clientes WHERE id = ?").get(id);
@@ -48,7 +48,7 @@ function salvarCore({ id, dados }) {
   }
   linha.cpf_cnpj_normalizado = cpfCnpjNormalizado;
 
-  const colunasOrdenadas = Object.keys(linha);
+  const colunasOrdenadas = Object.keys(linha).map(validarColuna);
   const valoresOrdenados = colunasOrdenadas.map((c) => linha[c]);
 
   if (clienteExistente) {

@@ -1,5 +1,5 @@
 const { db } = require("../db");
-const { nowStamp } = require("../util");
+const { nowStamp, coluna: validarColuna } = require("../util");
 
 // Mesmo critério usado em qualquer outro identificador digitado no sistema:
 // maiúsculo e sem espaço nas pontas, para "ABC123 " e "abc123" serem
@@ -77,7 +77,7 @@ function atualizarSerial(id, campos, now) {
   const fields = [];
   const values = [];
   for (const [coluna, valor] of Object.entries(campos)) {
-    fields.push(`${coluna} = ?`);
+    fields.push(`${validarColuna(coluna)} = ?`);
     values.push(valor);
   }
   fields.push("updated_at = ?");

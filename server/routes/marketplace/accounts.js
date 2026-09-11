@@ -1,6 +1,6 @@
 const express = require("express");
 const { db } = require("../../db");
-const { nowStamp } = require("../../util");
+const { nowStamp, coluna: validarColuna } = require("../../util");
 const { broadcast } = require("../../realtime");
 const { registrarAuditoria } = require("../../lib/marketplace/audit");
 
@@ -56,7 +56,7 @@ router.patch("/:id", (req, res) => {
     nomeInterno: "nome_interno",
   })) {
     if (typeof b[chave] === "string") {
-      fields.push(`${coluna} = ?`);
+      fields.push(`${validarColuna(coluna)} = ?`);
       const valor = b[chave].trim();
       values.push(chave === "identificadorExterno" ? valor || null : valor);
     }
