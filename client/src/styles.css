@@ -141,3 +141,16 @@ button { cursor: pointer; }
 .cf-ampliada-wrap{display:flex;justify-content:center;align-items:center;background:#0b140f;border-radius:14px;min-height:280px;max-height:60vh;overflow:hidden;margin-bottom:14px}
 .cf-ampliada-wrap img{max-width:100%;max-height:60vh;object-fit:contain}
 @media(max-width:760px){.cf-galeria-grid{grid-template-columns:repeat(auto-fill,minmax(84px,1fr))}}
+
+/* Peças/Fornecedores - selos de status com ícone e cor por etapa */
+.pf-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:12px;font-weight:600;font-size:12.5px;white-space:nowrap;line-height:1}
+.pf-badge svg{width:14px;height:14px;flex:none}
+.pf-badge-em_aberto{background:#fff7ed;color:#ea9a3d}
+.pf-badge-registrado{background:#e0f2fe;color:#008af5}
+.pf-badge-em_analise{background:#fefce8;color:#c98f14}
+.pf-badge-revisar{background:#fff1f2;color:#d5504a}
+.pf-badge-liberado{background:#f5f3ff;color:#6c3cf0}
+.pf-badge-concluido{background:#ecfdf5;color:#289b56}
+.pf-badge-pendente{background:#f4f4f5;color:#71717a}
+.pf-badge-aceita{background:#ecfdf5;color:#289b56}
+.pf-badge-recusada{background:#fff1f2;color:#d5504a}
