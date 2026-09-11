@@ -81,7 +81,7 @@ export default function MapaTab({ mapa, isAdmin, onAtualizado }: { mapa: LogMapa
 
   const selectedRack = mapa.racks.find((r) => r.id === selectedRackId) || null;
   const selectedFloor = mapa.floors.find((f) => f.id === selectedFloorId) || null;
-  const racksDoAndar = mapa.racks.filter((r) => r.floor_id === selectedFloorId && !r.is_holding_area);
+  const racksDoAndar = mapa.racks.filter((r) => r.floor_id === selectedFloorId && !r.is_holding_area && !r.is_separation_area);
 
   useEffect(() => {
     if (!mapa.floors.length) return;
@@ -527,7 +527,7 @@ function MontanteDetalhePainel({
     setGeo({ x: rack.x, y: rack.y, width: rack.width, height: rack.height });
   }, [rack.id, rack.name, rack.color, rack.x, rack.y, rack.width, rack.height]);
 
-  const podeEditar = isAdmin && editMode && !rack.is_holding_area;
+  const podeEditar = isAdmin && editMode && !rack.is_holding_area && !rack.is_separation_area;
 
   return (
     <div>
@@ -543,6 +543,11 @@ function MontanteDetalhePainel({
       {rack.is_holding_area && (
         <div className="error" style={{ background: "#fff8e6", color: "#8a6300", borderColor: "#ffe8a3" }}>
           Esse é o estoque de recebimento usado pelo cadastro de produtos com quantidade inicial - não aparece desenhado no mapa e não pode ser editado ou excluído.
+        </div>
+      )}
+      {rack.is_separation_area && (
+        <div className="error" style={{ background: "#fff8e6", color: "#8a6300", borderColor: "#ffe8a3" }}>
+          Essa é a área de separação usada pela Separação de pedidos para reservar itens até a expedição - não aparece desenhada no mapa e não pode ser editada ou excluída.
         </div>
       )}
 
