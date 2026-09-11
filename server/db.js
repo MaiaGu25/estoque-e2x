@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const { DatabaseSync } = require("node:sqlite");
-const { nowStamp } = require("./util");
+const { nowStamp, normalizarNumero, normalizarDocumento } = require("./util");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -1328,6 +1328,355 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_audit_entity ON marketplace_audit_log
 CREATE INDEX IF NOT EXISTS idx_marketplace_audit_created_at ON marketplace_audit_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_marketplace_manual_captures_status ON marketplace_manual_captures(status);
 `);
+
+// ---- RMA / SAC v2: reformulação do módulo de reclamações/devoluções ----
+// O módulo antigo (rma_casos/rma_eventos, acima) continua existindo e
+// NUNCA é apagado - vira só a fonte de dados de uma migração única (mais
+// abaixo) para o novo modelo, bem mais rico e totalmente relacional.
+// Ponto mais importante do pedido, repetido aqui porque vale para TODAS
+// as tabelas deste bloco: este módulo nunca cria entrada/saída de estoque,
+// nunca reserva e nunca desconta quantidade de "parts" nem de nenhum
+// outro catálogo - "produto" aqui é só referência/texto para o protocolo,
+// igual pecas_fornecedor já faz (sem FK pra parts).
+// Toda lista selecionável (status, canal de compra, motivo do produto,
+// etc.) fica em rma_opcoes, administrável, e por isso "status" não tem
+// CHECK fixo aqui - a validação de que o valor é uma opção ativa é feita
+// na camada de aplicação (server/lib/rma), não no banco.
+db.exec(`
+CREATE TABLE IF NOT EXISTS rma_clientes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL DEFAULT '',
+  cpf_cnpj TEXT NOT NULL DEFAULT '',
+  cpf_cnpj_normalizado TEXT NOT NULL DEFAULT '',
+  telefone TEXT NOT NULL DEFAULT '',
+  email TEXT NOT NULL DEFAULT '',
+  cep TEXT NOT NULL DEFAULT '',
+  logradouro TEXT NOT NULL DEFAULT '',
+  numero_endereco TEXT NOT NULL DEFAULT '',
+  complemento TEXT NOT NULL DEFAULT '',
+  bairro TEXT NOT NULL DEFAULT '',
+  cidade TEXT NOT NULL DEFAULT '',
+  uf TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Uma linha por opção de cada lista administrável. "valor" é a chave
+-- estável usada no código/nos protocolos existentes; "rotulo", "cor" e
+-- "ordem" são o que o admin edita. Nunca é apagada quando já usada por
+-- algum protocolo - só "ativo = 0" (deixa de aparecer pra novos
+-- cadastros, mas protocolos antigos continuam mostrando o rótulo normal).
+CREATE TABLE IF NOT EXISTS rma_opcoes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo TEXT NOT NULL CHECK(tipo IN ('status','status_secundario','canal_compra','modalidade_envio','canal_contato','motivo_produto','estado_embalagem','tipo_solucao')),
+  valor TEXT NOT NULL,
+  rotulo TEXT NOT NULL,
+  cor TEXT NOT NULL DEFAULT '',
+  ordem INTEGER NOT NULL DEFAULT 0,
+  ativo INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(tipo, valor)
+);
+
+CREATE TABLE IF NOT EXISTS rma_protocolos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero_protocolo TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'em_aberto',
+  status_secundario TEXT,
+  cliente_id INTEGER NOT NULL REFERENCES rma_clientes(id),
+  canal_contato TEXT NOT NULL DEFAULT '',
+  canal_compra TEXT NOT NULL DEFAULT '',
+  modalidade_envio TEXT NOT NULL DEFAULT '',
+  numero_pedido TEXT NOT NULL DEFAULT '',
+  numero_pedido_normalizado TEXT NOT NULL DEFAULT '',
+  numero_sistema TEXT NOT NULL DEFAULT '',
+  numero_sistema_normalizado TEXT NOT NULL DEFAULT '',
+  numero_envio TEXT NOT NULL DEFAULT '',
+  numero_envio_normalizado TEXT NOT NULL DEFAULT '',
+  numero_reversa TEXT NOT NULL DEFAULT '',
+  numero_reversa_normalizado TEXT NOT NULL DEFAULT '',
+  numero_rastreio TEXT NOT NULL DEFAULT '',
+  numero_rastreio_normalizado TEXT NOT NULL DEFAULT '',
+  data_compra TEXT,
+  valor_compra REAL,
+  descricao_reclamacao TEXT NOT NULL DEFAULT '',
+  data_abertura TEXT NOT NULL,
+  data_recebimento TEXT,
+  responsavel_recebimento_id INTEGER REFERENCES users(id),
+  data_solucao TEXT,
+  data_encerramento TEXT,
+  observacoes_gerais TEXT NOT NULL DEFAULT '',
+  legado_caso_id INTEGER REFERENCES rma_casos(id),
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+
+-- Produto ligado ao protocolo: puramente descritivo (código/SKU digitado,
+-- nunca uma FK para parts) - ver aviso no topo do bloco sobre nunca mexer
+-- em estoque.
+CREATE TABLE IF NOT EXISTS rma_produtos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  protocolo_id INTEGER NOT NULL REFERENCES rma_protocolos(id),
+  codigo_sku TEXT NOT NULL DEFAULT '',
+  descricao TEXT NOT NULL DEFAULT '',
+  quantidade REAL NOT NULL DEFAULT 1,
+  valor_unitario REAL,
+  valor_total REAL,
+  motivo TEXT NOT NULL DEFAULT '',
+  estado_embalagem TEXT NOT NULL DEFAULT '',
+  defeito_relatado TEXT NOT NULL DEFAULT '',
+  defeito_confirmado TEXT NOT NULL DEFAULT '',
+  numero_serial TEXT NOT NULL DEFAULT '',
+  observacao TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rma_solucoes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  protocolo_id INTEGER NOT NULL UNIQUE REFERENCES rma_protocolos(id),
+  tipo_solucao TEXT NOT NULL DEFAULT '',
+  descricao TEXT NOT NULL DEFAULT '',
+  valor_reembolso REAL,
+  peca_enviada TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL
+);
+
+-- Registro de cada consulta pela etiqueta (lida ou digitada), mesmo
+-- quando não encontra nada - é o log da camada isolada de identificação
+-- descrita em server/lib/rma/etiqueta.js.
+CREATE TABLE IF NOT EXISTS rma_recebimentos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  protocolo_id INTEGER REFERENCES rma_protocolos(id),
+  numero_pesquisado TEXT NOT NULL DEFAULT '',
+  campo_correspondido TEXT NOT NULL DEFAULT '',
+  resultado TEXT NOT NULL CHECK(resultado IN ('encontrado_unico','encontrado_multiplo','nao_encontrado')),
+  acao_realizada TEXT NOT NULL DEFAULT '',
+  responsavel_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rma_anexos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  protocolo_id INTEGER NOT NULL REFERENCES rma_protocolos(id),
+  etapa TEXT NOT NULL DEFAULT '',
+  nome_arquivo TEXT NOT NULL,
+  caminho_arquivo TEXT NOT NULL,
+  descricao TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
+-- Auditoria granular (campo/valor anterior/novo), gerada só pelo backend
+-- e nunca editável/apagável - nenhuma rota de UPDATE/DELETE é exposta
+-- para esta tabela.
+CREATE TABLE IF NOT EXISTS rma_historico (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  protocolo_id INTEGER NOT NULL REFERENCES rma_protocolos(id),
+  acao TEXT NOT NULL,
+  campo TEXT,
+  valor_anterior TEXT,
+  valor_novo TEXT,
+  user_id INTEGER REFERENCES users(id),
+  user_name TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rma_protocolos_status ON rma_protocolos(status);
+CREATE INDEX IF NOT EXISTS idx_rma_protocolos_data_abertura ON rma_protocolos(data_abertura);
+CREATE INDEX IF NOT EXISTS idx_rma_protocolos_pedido ON rma_protocolos(numero_pedido_normalizado);
+CREATE INDEX IF NOT EXISTS idx_rma_protocolos_sistema ON rma_protocolos(numero_sistema_normalizado);
+CREATE INDEX IF NOT EXISTS idx_rma_protocolos_envio ON rma_protocolos(numero_envio_normalizado);
+CREATE INDEX IF NOT EXISTS idx_rma_protocolos_reversa ON rma_protocolos(numero_reversa_normalizado);
+CREATE INDEX IF NOT EXISTS idx_rma_protocolos_rastreio ON rma_protocolos(numero_rastreio_normalizado);
+CREATE INDEX IF NOT EXISTS idx_rma_protocolos_cliente ON rma_protocolos(cliente_id);
+-- Parcial (só quando preenchido) para permitir reaproveitar o mesmo
+-- cliente entre protocolos diferentes pelo CPF/CNPJ, sem impedir vários
+-- clientes sem documento cadastrado (comum em compras antigas/legado).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rma_clientes_cpf_cnpj ON rma_clientes(cpf_cnpj_normalizado) WHERE cpf_cnpj_normalizado != '';
+CREATE INDEX IF NOT EXISTS idx_rma_produtos_protocolo ON rma_produtos(protocolo_id);
+CREATE INDEX IF NOT EXISTS idx_rma_historico_protocolo ON rma_historico(protocolo_id);
+CREATE INDEX IF NOT EXISTS idx_rma_historico_created_at ON rma_historico(created_at);
+CREATE INDEX IF NOT EXISTS idx_rma_recebimentos_protocolo ON rma_recebimentos(protocolo_id);
+CREATE INDEX IF NOT EXISTS idx_rma_anexos_protocolo ON rma_anexos(protocolo_id);
+CREATE INDEX IF NOT EXISTS idx_rma_opcoes_tipo ON rma_opcoes(tipo, ativo, ordem);
+`);
+
+// Semeia as opções padrão de cada lista (idempotente: nunca sobrescreve
+// rótulo/ordem/ativo que o admin já tenha alterado - só insere quem ainda
+// não existe). São só o ponto de partida; tudo aqui é editável depois na
+// área administrativa do módulo.
+{
+  const opcoesPadrao = [
+    ["status", "em_aberto", "Em aberto", "#64748b"],
+    ["status", "aguardando_recebimento", "Aguardando recebimento", "#f59e0b"],
+    ["status", "recebido", "Recebido", "#0ea5e9"],
+    ["status", "em_conferencia", "Em conferência", "#0ea5e9"],
+    ["status", "em_analise", "Em análise", "#8b5cf6"],
+    ["status", "aguardando_solucao", "Aguardando solução", "#8b5cf6"],
+    ["status", "solucionado", "Solucionado", "#22c55e"],
+    ["status", "encerrado", "Encerrado", "#16a34a"],
+    ["status", "cancelado", "Cancelado", "#ef4444"],
+    ["canal_compra", "mercado_livre", "Mercado Livre", ""],
+    ["canal_compra", "shopee", "Shopee", ""],
+    ["canal_compra", "site", "Site", ""],
+    ["canal_compra", "outro", "Outro", ""],
+    ["canal_contato", "mercado_livre", "Mercado Livre", ""],
+    ["canal_contato", "telefone", "Telefone", ""],
+    ["canal_contato", "whatsapp", "WhatsApp", ""],
+    ["canal_contato", "email", "E-mail", ""],
+    ["canal_contato", "outro", "Outro", ""],
+    ["modalidade_envio", "correios", "Correios", ""],
+    ["modalidade_envio", "transportadora", "Transportadora", ""],
+    ["modalidade_envio", "retirada", "Retirada em mãos", ""],
+    ["motivo_produto", "defeito", "Defeito", ""],
+    ["motivo_produto", "arrependimento", "Arrependimento", ""],
+    ["motivo_produto", "produto_errado", "Produto errado", ""],
+    ["motivo_produto", "avaria_transporte", "Avaria no transporte", ""],
+    ["estado_embalagem", "lacrada", "Lacrada", ""],
+    ["estado_embalagem", "aberta_integra", "Aberta e íntegra", ""],
+    ["estado_embalagem", "danificada", "Danificada", ""],
+    ["tipo_solucao", "troca_produto", "Troca do produto", ""],
+    ["tipo_solucao", "reparo", "Reparo", ""],
+    ["tipo_solucao", "envio_peca", "Envio de peça", ""],
+    ["tipo_solucao", "reembolso", "Reembolso", ""],
+    ["tipo_solucao", "devolucao", "Devolução", ""],
+    ["tipo_solucao", "reclamacao_recusada", "Reclamação recusada / improcedente", ""],
+  ];
+  const inserirOpcao = db.prepare(
+    `INSERT INTO rma_opcoes (tipo,valor,rotulo,cor,ordem,ativo,created_at,updated_at)
+     VALUES (?,?,?,?,?,1,?,?)
+     ON CONFLICT(tipo,valor) DO NOTHING`
+  );
+  const agora = nowStamp();
+  const ordemPorTipo = {};
+  for (const [tipo, valor, rotulo, cor] of opcoesPadrao) {
+    ordemPorTipo[tipo] = (ordemPorTipo[tipo] || 0) + 1;
+    inserirOpcao.run(tipo, valor, rotulo, cor, ordemPorTipo[tipo], agora, agora);
+  }
+}
+
+// Migração única dos casos antigos (rma_casos/rma_eventos) para o novo
+// modelo de protocolo. Nunca apaga nem altera as tabelas antigas - só lê
+// delas. Idempotente por construção: só migra o caso que ainda não tem
+// nenhum protocolo novo com legado_caso_id apontando pra ele, então rodar
+// de novo (ex.: servidor reiniciado no meio) nunca duplica nada.
+{
+  const jaMigrados = new Set(
+    db
+      .prepare("SELECT legado_caso_id FROM rma_protocolos WHERE legado_caso_id IS NOT NULL")
+      .all()
+      .map((r) => r.legado_caso_id)
+  );
+  const casosPendentes = db.prepare("SELECT * FROM rma_casos ORDER BY id").all().filter((c) => !jaMigrados.has(c.id));
+
+  if (casosPendentes.length) {
+    // Status antigo (4 valores) -> novo (9 valores): a única correspondência
+    // razoável sem inventar informação que os dados antigos não têm.
+    const mapaStatus = {
+      aguardando_devolucao: "aguardando_recebimento",
+      recebido: "recebido",
+      em_inspecao: "em_analise",
+      concluido: "encerrado",
+    };
+    const mapaSolucao = {
+      reembolso_cliente: "reembolso",
+      cobranca_plataforma: "reclamacao_recusada",
+    };
+
+    db.exec("BEGIN");
+    try {
+      for (const caso of casosPendentes) {
+        const cliente = db
+          .prepare("INSERT INTO rma_clientes (nome,created_at,updated_at) VALUES (?,?,?)")
+          .run(caso.cliente || "", caso.created_at, caso.created_at);
+
+        const notasLegado = [
+          caso.laudo_tecnico && `Laudo técnico (migrado): ${caso.laudo_tecnico}`,
+          caso.tecnico_responsavel && `Técnico responsável (migrado): ${caso.tecnico_responsavel}`,
+          caso.culpa && `Culpa (migrado): ${caso.culpa}`,
+          caso.disputa_status && caso.disputa_status !== "nao_aberta" && `Status da disputa (migrado): ${caso.disputa_status}`,
+        ].filter(Boolean).join(" | ");
+
+        const protocolo = db
+          .prepare(
+            `INSERT INTO rma_protocolos
+               (numero_protocolo,status,cliente_id,canal_compra,numero_pedido,numero_pedido_normalizado,
+                descricao_reclamacao,data_abertura,data_encerramento,observacoes_gerais,
+                legado_caso_id,created_by,created_at,updated_by,updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          )
+          .run(
+            caso.numero,
+            mapaStatus[caso.status] || "em_aberto",
+            cliente.lastInsertRowid,
+            caso.plataforma || "",
+            caso.pedido || "",
+            normalizarNumero(caso.pedido),
+            caso.motivo_cliente || "",
+            caso.created_at,
+            caso.resolved_at,
+            notasLegado,
+            caso.id,
+            caso.created_by,
+            caso.created_at,
+            caso.created_by,
+            caso.updated_at
+          );
+        const protocoloId = protocolo.lastInsertRowid;
+
+        db.prepare(
+          `INSERT INTO rma_produtos (protocolo_id,descricao,quantidade,valor_total,created_at,updated_at)
+           VALUES (?,?,1,?,?,?)`
+        ).run(protocoloId, caso.produto || "", caso.valor, caso.created_at, caso.updated_at);
+
+        if (caso.desfecho) {
+          db.prepare(
+            `INSERT INTO rma_solucoes (protocolo_id,tipo_solucao,valor_reembolso,created_at,updated_at)
+             VALUES (?,?,?,?,?)`
+          ).run(
+            protocoloId,
+            mapaSolucao[caso.desfecho] || "",
+            caso.desfecho === "reembolso_cliente" ? caso.valor : null,
+            caso.updated_at,
+            caso.updated_at
+          );
+        }
+
+        db.prepare(
+          `INSERT INTO rma_historico (protocolo_id,acao,valor_novo,user_name,created_at)
+           VALUES (?,'migracao.protocolo_criado',?,?,?)`
+        ).run(protocoloId, `Migrado automaticamente do caso legado ${caso.numero}.`, "Sistema", nowStamp());
+
+        const eventos = db.prepare("SELECT * FROM rma_eventos WHERE caso_id = ? ORDER BY id").all(caso.id);
+        for (const evento of eventos) {
+          db.prepare(
+            `INSERT INTO rma_historico (protocolo_id,acao,valor_novo,user_id,user_name,created_at)
+             VALUES (?,'migracao.evento',?,?,?,?)`
+          ).run(protocoloId, evento.texto || evento.tipo || "", evento.created_by, evento.responsible || "Sistema", evento.created_at);
+
+          if (evento.foto) {
+            db.prepare(
+              `INSERT INTO rma_anexos (protocolo_id,etapa,nome_arquivo,caminho_arquivo,created_by,created_at)
+               VALUES (?,'migracao',?,?,?,?)`
+            ).run(protocoloId, path.basename(evento.foto), evento.foto, evento.created_by, evento.created_at);
+          }
+        }
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+}
 
 function getMeta(key) {
   const row = db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key);

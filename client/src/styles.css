@@ -154,3 +154,15 @@ button { cursor: pointer; }
 .pf-badge-pendente{background:#f4f4f5;color:#71717a}
 .pf-badge-aceita{background:#ecfdf5;color:#289b56}
 .pf-badge-recusada{background:#fff1f2;color:#d5504a}
+
+/* RMA/SAC - selo de status/opção com cor administrável, passos do wizard
+   e campo de leitura de etiqueta */
+.rma-badge{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;font-weight:700;font-size:11px;white-space:nowrap;line-height:1}
+.rma-steps{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.rma-step{border:1px solid #dce6e0;background:white;color:#5c7267;border-radius:10px;padding:9px 13px;font-weight:700;font-size:12px}
+.rma-step.active{background:#0caf65;border-color:#0caf65;color:white}
+.rma-step:disabled{opacity:.45;cursor:not-allowed}
+.rma-scanner{display:flex;align-items:center;gap:12px;background:#f5f8f6;border:1px solid #dce6e0;border-radius:14px;padding:16px 18px;margin-bottom:18px}
+.rma-scanner svg{color:#0caf65;flex:none}
+.rma-scanner input{flex:1;height:48px;border:1px solid #d8e2dc;border-radius:10px;padding:0 14px;font-size:15px;outline:none}
+.field-hint{color:#8a9d94;font-size:11px;margin-top:2px}

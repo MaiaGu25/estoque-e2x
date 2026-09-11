@@ -19,4 +19,21 @@ function saveBase64Image(dir, filename, dataUrl) {
   return arquivo;
 }
 
-module.exports = { nowStamp, saveBase64Image };
+// Usado pelos números do protocolo de RMA/SAC (pedido, sistema, envio,
+// reversa, rastreio) para aceitar o valor digitado ou lido por leitor de
+// código de barras com ou sem espaço/pontuação: "AB-123 456" e "ab123456"
+// viram o mesmo valor de busca. Guardado numa coluna "_normalizado" ao
+// lado do valor original, nunca no lugar dele.
+function normalizarNumero(valor) {
+  return String(valor || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+// Mesma ideia, mas só dígitos - usado para CPF/CNPJ, onde pontuação nunca
+// faz parte do número em si.
+function normalizarDocumento(valor) {
+  return String(valor || "").replace(/\D/g, "");
+}
+
+module.exports = { nowStamp, saveBase64Image, normalizarNumero, normalizarDocumento };
