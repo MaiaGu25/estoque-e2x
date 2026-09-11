@@ -1076,6 +1076,259 @@ if (!columnExists("logistics_racks", "is_separation_area")) {
   }
 }
 
+// ---- Marketplace: hub de pedidos do Mercado Livre / Shopee ----
+// Ancorado no Estoque geral (parts/reserved_movements, já existentes) - a
+// Logística (logistics_products/positions) é outro catálogo, totalmente
+// independente, sem nenhuma ponte hoje entre os dois. "marketplace" fica
+// como enum (CHECK) e não uma tabela à parte, no mesmo padrão que
+// logistics_pedidos_saida.canal já usa - cadastrar/gerenciar uma conta
+// concreta é o que a tabela marketplace_accounts faz.
+db.exec(`
+CREATE TABLE IF NOT EXISTS marketplace_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  marketplace TEXT NOT NULL CHECK(marketplace IN ('mercado_livre','shopee')),
+  nome_interno TEXT NOT NULL,
+  apelido TEXT NOT NULL DEFAULT '',
+  -- NULL (nunca '') quando ainda não informado - o índice único abaixo
+  -- não trava a criação de várias lojas do mesmo marketplace só porque
+  -- nenhuma delas tem identificador externo ainda (SQLite trata cada
+  -- NULL como distinto, mas duas strings vazias colidiriam).
+  identificador_externo TEXT,
+  status_conexao TEXT NOT NULL CHECK(status_conexao IN ('nao_configurada','conectada','desconectada','erro','token_expirado')) DEFAULT 'nao_configurada',
+  ativa INTEGER NOT NULL DEFAULT 1,
+  autorizado_em TEXT,
+  ultima_sincronizacao TEXT,
+  ultima_notificacao TEXT,
+  ultima_reconciliacao TEXT,
+  token_expira_em TEXT,
+  credencial_ref TEXT NOT NULL DEFAULT '',
+  ultimo_erro TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  UNIQUE(marketplace, identificador_externo)
+);
+
+-- Pedido normalizado (o "modelo interno" único, independente do formato
+-- de cada API). id_externo + a conta identificam o pedido de origem;
+-- UNIQUE(account_id, id_externo) é a barreira contra duplicidade no
+-- banco - webhook repetido ou nova reconciliação nunca cria outra linha.
+CREATE TABLE IF NOT EXISTS marketplace_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES marketplace_accounts(id),
+  marketplace TEXT NOT NULL CHECK(marketplace IN ('mercado_livre','shopee')),
+  id_externo TEXT NOT NULL,
+  numero_visivel TEXT NOT NULL DEFAULT '',
+  status_interno TEXT NOT NULL CHECK(status_interno IN (
+    'novo','aguardando_pagamento','pago','estoque_reservado','aguardando_separacao',
+    'em_separacao','separado','aguardando_expedicao','enviado','entregue',
+    'cancelado','devolvido','com_divergencia','erro_sincronizacao'
+  )) DEFAULT 'novo',
+  status_externo TEXT NOT NULL DEFAULT '',
+  origem TEXT NOT NULL CHECK(origem IN ('automatica','manual','manual_reconciliado')) DEFAULT 'manual',
+  comprador_nome TEXT NOT NULL DEFAULT '',
+  comprador_documento TEXT NOT NULL DEFAULT '',
+  data_compra TEXT,
+  data_aprovacao TEXT,
+  prazo_envio TEXT,
+  valor_produtos REAL NOT NULL DEFAULT 0,
+  desconto REAL NOT NULL DEFAULT 0,
+  frete REAL NOT NULL DEFAULT 0,
+  valor_total REAL NOT NULL DEFAULT 0,
+  moeda TEXT NOT NULL DEFAULT 'BRL',
+  observacao TEXT NOT NULL DEFAULT '',
+  motivo_manual TEXT NOT NULL DEFAULT '',
+  importado_em TEXT NOT NULL,
+  ultima_sincronizacao TEXT,
+  payload_minimo TEXT NOT NULL DEFAULT '',
+  responsavel TEXT NOT NULL DEFAULT '',
+  criado_manualmente_por INTEGER REFERENCES users(id),
+  chave_idempotencia TEXT NOT NULL,
+  reconciliado_com_api INTEGER NOT NULL DEFAULT 0,
+  cancelado_em TEXT,
+  motivo_cancelamento TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  UNIQUE(account_id, id_externo)
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES marketplace_orders(id),
+  part_id INTEGER REFERENCES parts(id),
+  sku_externo TEXT NOT NULL DEFAULT '',
+  sku_interno TEXT NOT NULL DEFAULT '',
+  id_anuncio TEXT NOT NULL DEFAULT '',
+  id_variacao TEXT NOT NULL DEFAULT '',
+  titulo_recebido TEXT NOT NULL DEFAULT '',
+  variacao_texto TEXT NOT NULL DEFAULT '',
+  quantidade REAL NOT NULL,
+  preco_unitario REAL NOT NULL DEFAULT 0,
+  desconto REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  status_vinculacao TEXT NOT NULL CHECK(status_vinculacao IN ('vinculado','nao_vinculado','divergente','sku_inexistente','variacao_nao_identificada')) DEFAULT 'nao_vinculado',
+  reserva_criada INTEGER NOT NULL DEFAULT 0,
+  quantidade_reservada REAL NOT NULL DEFAULT 0,
+  quantidade_separada REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Anúncio recebido do marketplace (só leitura, nunca editado de volta).
+CREATE TABLE IF NOT EXISTS marketplace_listings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL REFERENCES marketplace_accounts(id),
+  marketplace TEXT NOT NULL CHECK(marketplace IN ('mercado_livre','shopee')),
+  id_anuncio TEXT NOT NULL,
+  titulo TEXT NOT NULL DEFAULT '',
+  sku_recebido TEXT NOT NULL DEFAULT '',
+  variacao_texto TEXT NOT NULL DEFAULT '',
+  id_variacao TEXT NOT NULL DEFAULT '',
+  preco_anunciado REAL NOT NULL DEFAULT 0,
+  estoque_anunciado REAL NOT NULL DEFAULT 0,
+  status_anuncio TEXT NOT NULL DEFAULT '',
+  categoria TEXT NOT NULL DEFAULT '',
+  url_anuncio TEXT NOT NULL DEFAULT '',
+  foto_url TEXT NOT NULL DEFAULT '',
+  ultima_sincronizacao TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(account_id, id_anuncio, id_variacao)
+);
+
+-- Vínculo reaproveitado nas próximas importações: uma vez vinculado um
+-- anúncio a uma peça do Estoque geral, todo pedido novo daquele anúncio
+-- já reserva certo sem precisar de ação manual de novo.
+CREATE TABLE IF NOT EXISTS marketplace_listing_mappings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id INTEGER NOT NULL REFERENCES marketplace_listings(id),
+  part_id INTEGER NOT NULL REFERENCES parts(id),
+  status TEXT NOT NULL CHECK(status IN ('vinculado','divergente')) DEFAULT 'vinculado',
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL,
+  UNIQUE(listing_id)
+);
+
+-- Uma linha por reserva feita em reserved_movements por causa de um item
+-- de pedido - é o que garante nunca reservar/dar baixa duas vezes no
+-- mesmo pedido (idempotência) e permite liberar exatamente a quantidade
+-- certa no cancelamento.
+CREATE TABLE IF NOT EXISTS marketplace_order_reservations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_item_id INTEGER NOT NULL REFERENCES marketplace_order_items(id),
+  part_id INTEGER NOT NULL REFERENCES parts(id),
+  quantidade REAL NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('reservado','liberado','baixado')) DEFAULT 'reservado',
+  reserved_movement_id INTEGER REFERENCES reserved_movements(id),
+  baixa_movement_id INTEGER REFERENCES reserved_movements(id),
+  liberado_movement_id INTEGER REFERENCES reserved_movements(id),
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_sync_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER REFERENCES marketplace_accounts(id),
+  marketplace TEXT NOT NULL,
+  tipo TEXT NOT NULL CHECK(tipo IN ('webhook','reconciliacao','busca_manual','teste_conexao','importacao_manual')),
+  id_externo TEXT NOT NULL DEFAULT '',
+  resultado TEXT NOT NULL CHECK(resultado IN ('sucesso','falha','ignorado')) DEFAULT 'sucesso',
+  detalhe TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+-- Fila de retry com atraso progressivo; depois do limite de tentativas
+-- vira 'falha_permanente' e para de tentar sozinha.
+CREATE TABLE IF NOT EXISTS marketplace_sync_failures (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER REFERENCES marketplace_accounts(id),
+  marketplace TEXT NOT NULL,
+  tipo_evento TEXT NOT NULL,
+  id_externo TEXT NOT NULL DEFAULT '',
+  tentativas INTEGER NOT NULL DEFAULT 0,
+  proxima_tentativa TEXT,
+  erro_resumo TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('pendente','resolvida','falha_permanente')) DEFAULT 'pendente',
+  primeira_falha_em TEXT NOT NULL,
+  ultima_tentativa_em TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo TEXT NOT NULL,
+  severidade TEXT NOT NULL CHECK(severidade IN ('info','atencao','critico')) DEFAULT 'atencao',
+  account_id INTEGER REFERENCES marketplace_accounts(id),
+  order_id INTEGER REFERENCES marketplace_orders(id),
+  titulo TEXT NOT NULL,
+  descricao TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL CHECK(status IN ('aberto','visto','resolvido')) DEFAULT 'aberto',
+  resolvido_por INTEGER REFERENCES users(id),
+  resolvido_em TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER,
+  user_id INTEGER REFERENCES users(id),
+  user_name TEXT NOT NULL DEFAULT 'Sistema',
+  previous_data TEXT NOT NULL DEFAULT '',
+  new_data TEXT NOT NULL DEFAULT '',
+  resultado TEXT NOT NULL DEFAULT 'sucesso',
+  created_at TEXT NOT NULL
+);
+
+-- Captura de tela do pedido manual: nome interno aleatório (nunca o nome
+-- original), nunca cria pedido/reserva sozinha - só guarda o que a leitura
+-- (OCR) encontrou para o formulário sugerir e o administrador confirmar.
+CREATE TABLE IF NOT EXISTS marketplace_manual_captures (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  arquivo TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  tamanho_bytes INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('processando','lida','falhou','descartada')) DEFAULT 'processando',
+  dados_reconhecidos TEXT NOT NULL DEFAULT '',
+  confianca_media REAL NOT NULL DEFAULT 0,
+  order_id INTEGER REFERENCES marketplace_orders(id),
+  created_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  excluir_apos TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_marketplace_accounts_marketplace ON marketplace_accounts(marketplace);
+CREATE INDEX IF NOT EXISTS idx_marketplace_orders_account ON marketplace_orders(account_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_orders_status ON marketplace_orders(status_interno);
+CREATE INDEX IF NOT EXISTS idx_marketplace_orders_marketplace ON marketplace_orders(marketplace);
+CREATE INDEX IF NOT EXISTS idx_marketplace_orders_importado_em ON marketplace_orders(importado_em);
+CREATE INDEX IF NOT EXISTS idx_marketplace_orders_prazo_envio ON marketplace_orders(prazo_envio);
+CREATE INDEX IF NOT EXISTS idx_marketplace_order_items_order ON marketplace_order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_order_items_part ON marketplace_order_items(part_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_order_items_vinculacao ON marketplace_order_items(status_vinculacao);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_account ON marketplace_listings(account_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listing_mappings_part ON marketplace_listing_mappings(part_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_order_reservations_item ON marketplace_order_reservations(order_item_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_order_reservations_part ON marketplace_order_reservations(part_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_sync_events_account ON marketplace_sync_events(account_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_sync_events_created_at ON marketplace_sync_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_marketplace_sync_failures_status ON marketplace_sync_failures(status);
+CREATE INDEX IF NOT EXISTS idx_marketplace_sync_failures_proxima_tentativa ON marketplace_sync_failures(proxima_tentativa);
+CREATE INDEX IF NOT EXISTS idx_marketplace_alerts_status ON marketplace_alerts(status);
+CREATE INDEX IF NOT EXISTS idx_marketplace_alerts_created_at ON marketplace_alerts(created_at);
+CREATE INDEX IF NOT EXISTS idx_marketplace_audit_entity ON marketplace_audit_logs(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_audit_created_at ON marketplace_audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_marketplace_manual_captures_status ON marketplace_manual_captures(status);
+`);
+
 function getMeta(key) {
   const row = db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key);
   return row ? row.value : null;

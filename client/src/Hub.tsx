@@ -1,9 +1,9 @@
-import { Archive, Boxes, Camera, ImagePlus, LogOut, RotateCcw, ShieldCheck, ShoppingCart, Truck, Warehouse } from "lucide-react";
+import { Archive, Boxes, Camera, ImagePlus, LogOut, RotateCcw, ShieldCheck, ShoppingBag, ShoppingCart, Truck, Warehouse } from "lucide-react";
 import type { User } from "./types";
 
-type AppId = "estoque" | "tecnicos" | "testes" | "rma" | "pecasFornecedor" | "logistica" | "vendas" | "centralFotos";
+type AppId = "estoque" | "tecnicos" | "testes" | "rma" | "pecasFornecedor" | "logistica" | "vendas" | "centralFotos" | "marketplace";
 
-const APPS: { id: AppId; nome: string; descricao: string; icon: any }[] = [
+const APPS: { id: AppId; nome: string; descricao: string; icon: any; adminOnly?: boolean }[] = [
   { id: "estoque", nome: "Estoque", descricao: "Peças, ordens, movimentações e relatórios do estoque geral.", icon: Boxes },
   { id: "testes", nome: "Central de Testes", descricao: "Registro de testes de máquinas com fotos e consulta de evidências.", icon: Camera },
   { id: "tecnicos", nome: "Estoque dos Técnicos", descricao: "Peças de bancada, configurações e montagem de máquinas.", icon: Archive },
@@ -12,10 +12,12 @@ const APPS: { id: AppId; nome: string; descricao: string; icon: any }[] = [
   { id: "logistica", nome: "Logística", descricao: "Estoque do galpão: produtos, movimentações e mapa de posições.", icon: Warehouse },
   { id: "vendas", nome: "Vendas", descricao: "Consulta de produtos e orçamentos para venda direta.", icon: ShoppingCart },
   { id: "centralFotos", nome: "Central de Fotos", descricao: "Cadastro de produtos por SKU e fotos usadas pelo resto do sistema.", icon: ImagePlus },
+  { id: "marketplace", nome: "Marketplace", descricao: "Pedidos do Mercado Livre e Shopee, estoque reservado e sincronização.", icon: ShoppingBag, adminOnly: true },
 ];
 
 export default function Hub({ user, onOpen, onLogout }: { user: User; onOpen: (id: AppId) => void; onLogout: () => void }) {
   const isAdmin = user.role === "admin";
+  const apps = APPS.filter((a) => !a.adminOnly || isAdmin);
 
   return (
     <div className="hub-screen">
@@ -43,7 +45,7 @@ export default function Hub({ user, onOpen, onLogout }: { user: User; onOpen: (i
         </div>
       </header>
       <main className="hub-grid">
-        {APPS.map(({ id, nome, descricao, icon: Icon }) => (
+        {apps.map(({ id, nome, descricao, icon: Icon }) => (
           <button key={id} className="hub-card" onClick={() => onOpen(id)}>
             <div className="hub-card-icon">
               <Icon size={28} />
