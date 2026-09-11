@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Ban, PackageCheck, Play, Truck } from "lucide-react";
+import { ArrowLeft, Ban, CheckCircle2, PackageCheck, Play, TriangleAlert, Truck } from "lucide-react";
 import { api, ApiError } from "../api";
+import { Badge } from "../Badge";
 import type { MktOrderDetail } from "./types";
-import { Empty, MARKETPLACE_LABEL, Panel, PrazoBadge, StatusBadge, VinculacaoBadge, dt, fmt, fmtMoeda } from "./ui";
+import { Empty, MARKETPLACE_LABEL, OrigemBadge, Panel, PrazoBadge, StatusBadge, VinculacaoBadge, dt, fmt, fmtMoeda } from "./ui";
 import FotoProduto from "./FotoProduto";
 
 export default function PedidoDetalhe({
@@ -79,7 +80,7 @@ export default function PedidoDetalhe({
         <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
           <StatusBadge status={pedido.status_interno} />
           <PrazoBadge situacao={situacaoPrazo} />
-          <span className="status">{pedido.origem === "automatica" ? "Automática" : pedido.origem === "manual_reconciliado" ? "Manual reconciliado com API" : "Manual"}</span>
+          <OrigemBadge origem={pedido.origem} />
         </div>
 
         <div className="detail-meta">
@@ -179,7 +180,9 @@ export default function PedidoDetalhe({
                     <b>{a.titulo}</b>
                     <small>{a.descricao}</small>
                   </span>
-                  <span className={`status ${a.status === "resolvido" ? "ok" : "warn"}`}>{a.status}</span>
+                  <Badge icon={a.status === "resolvido" ? CheckCircle2 : TriangleAlert} tone={a.status === "resolvido" ? "ok" : "warn"}>
+                    {a.status}
+                  </Badge>
                 </div>
               ))}
             </div>

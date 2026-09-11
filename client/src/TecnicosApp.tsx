@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Boxes, CheckSquare, ChevronRight,
+  Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, Boxes, CheckCircle2, CheckSquare, ChevronRight,
   ClipboardList, Cpu, History, LayoutDashboard, LogOut, Menu, Plus, RefreshCw,
   ShieldCheck, TriangleAlert, X,
 } from "lucide-react";
 import { api } from "./api";
+import { Badge, type BadgeTone } from "./Badge";
 import type { TecConfig, TecConfigItem, TecItem, TecMovimento, TecnicosData, User } from "./types";
 import { useRealtime } from "./useRealtime";
 import InventarioTab from "./tecnicos/InventarioTab";
@@ -19,6 +20,9 @@ function status(qtd: number, limite: number): ["CRITICO" | "BAIXO" | "NORMAL", s
   if (qtd <= limite) return ["BAIXO", "#f1c84b"];
   return ["NORMAL", "#34e889"];
 }
+
+const NIVEL_TONE: Record<"CRITICO" | "BAIXO" | "NORMAL", BadgeTone> = { CRITICO: "danger", BAIXO: "warn", NORMAL: "ok" };
+const NIVEL_ICON = { CRITICO: TriangleAlert, BAIXO: TriangleAlert, NORMAL: CheckCircle2 };
 
 export default function TecnicosApp({ user, onLogout, onHome }: { user: User; onLogout: () => void; onHome: () => void }) {
   const tabs = [
@@ -209,9 +213,9 @@ export default function TecnicosApp({ user, onLogout, onHome }: { user: User; on
                                     <b>{item.quantidade} unidades</b>
                                   </td>
                                   <td>
-                                    <span className="status" style={{ background: cor + "22", color: cor }}>
+                                    <Badge icon={NIVEL_ICON[label]} tone={NIVEL_TONE[label]}>
                                       {label}
-                                    </span>
+                                    </Badge>
                                   </td>
                                 </tr>
                               );

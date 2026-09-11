@@ -3,7 +3,7 @@ import { Plus, Search } from "lucide-react";
 import { api } from "../../api";
 import type { LogPedidoSaida } from "../../types";
 import { Empty, Panel } from "../ui";
-import { CANAL_LABEL, PEDIDO_STATUS_CLASS, PEDIDO_STATUS_LABEL, PRIORIDADE_CLASS, PRIORIDADE_LABEL } from "./ui";
+import { CANAL_LABEL, PEDIDO_STATUS_LABEL, PedidoStatusBadge, PRIORIDADE_LABEL, PrioridadeBadge } from "./ui";
 import NovoPedidoModal from "./NovoPedidoModal";
 
 export default function SeparacaoLista({
@@ -75,14 +75,14 @@ export default function SeparacaoLista({
               <button key={p.id} className="order-card" onClick={() => onAbrir(p.id)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
                   <b className="code">{p.numero}</b>
-                  <span className={`status ${PEDIDO_STATUS_CLASS[p.status]}`}>{PEDIDO_STATUS_LABEL[p.status]}</span>
+                  <PedidoStatusBadge status={p.status} />
                 </div>
                 <p style={{ margin: "6px 0 2px" }}>
                   {CANAL_LABEL[p.canal]} {p.cliente_nome ? `· ${p.cliente_nome}` : ""} {p.vendedor ? `· ${p.vendedor}` : ""}
                 </p>
                 <small>
                   {p.total_itens} item(ns) · {p.divergencias_abertas ? `${p.divergencias_abertas} divergência(s)` : "sem divergências"} ·{" "}
-                  <span className={`status ${PRIORIDADE_CLASS[p.prioridade]}`}>{PRIORIDADE_LABEL[p.prioridade]}</span>
+                  <PrioridadeBadge prioridade={p.prioridade} />
                 </small>
               </button>
             ))}

@@ -1,5 +1,6 @@
-import { X } from "lucide-react";
+import { CheckCircle2, Clock5, PackagePlus, TriangleAlert, X } from "lucide-react";
 import type { TecInventarioSituacao } from "../types";
+import { Badge, type BadgeTone } from "../Badge";
 
 export const fmt = (n: number) => new Intl.NumberFormat("pt-BR").format(n);
 export const fmtSinal = (n: number) => new Intl.NumberFormat("pt-BR", { signDisplay: "exceptZero" }).format(n);
@@ -13,22 +14,22 @@ export const SITUACAO_LABEL: Record<TecInventarioSituacao, string> = {
 };
 
 // Cinza (pendente), verde (correto), laranja (falta), azul (sobra) - as
-// cores pedidas, usando as mesmas classes ".status" já existentes no
-// resto do sistema (mais a cor customizada da falta, que não tem uma
-// classe pronta equivalente).
-export const SITUACAO_CLASS: Record<TecInventarioSituacao, string> = {
-  PENDENTE: "",
+// cores pedidas, com ícone por situação (mesmo visual do resto do app).
+export const SITUACAO_TONE: Record<TecInventarioSituacao, BadgeTone> = {
+  PENDENTE: "neutral",
   CORRETO: "ok",
-  FALTA: "",
+  FALTA: "warn",
   SOBRA: "transfer",
 };
-export const SITUACAO_COR_FALTA = "#c0501f";
+
+const SITUACAO_ICON = { PENDENTE: Clock5, CORRETO: CheckCircle2, FALTA: TriangleAlert, SOBRA: PackagePlus };
 
 export function SituacaoBadge({ situacao }: { situacao: TecInventarioSituacao }) {
-  if (situacao === "FALTA") {
-    return <span className="status" style={{ background: "#fdece1", color: SITUACAO_COR_FALTA }}>{SITUACAO_LABEL[situacao]}</span>;
-  }
-  return <span className={`status ${SITUACAO_CLASS[situacao]}`}>{SITUACAO_LABEL[situacao]}</span>;
+  return (
+    <Badge icon={SITUACAO_ICON[situacao]} tone={SITUACAO_TONE[situacao]}>
+      {SITUACAO_LABEL[situacao]}
+    </Badge>
+  );
 }
 
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {

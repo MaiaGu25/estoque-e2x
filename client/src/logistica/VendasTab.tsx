@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Plus, RefreshCw, Search } from "lucide-react";
+import { CheckCircle2, Clock5, Plus, RefreshCw, Search, XCircle } from "lucide-react";
 import { api } from "../api";
 import type { LogOrcamento, LogOrcamentoItem, LogOrcamentoStatus, LogProduto, User } from "../types";
+import { Badge, type BadgeTone } from "../Badge";
 import { Empty, Field, fmt, Modal } from "./ui";
 import { LocalizacaoAtual, PosicaoEstoque } from "./PosicaoSeletor";
 
@@ -12,15 +13,21 @@ const STATUS_LABEL: Record<LogOrcamentoStatus, string> = {
   cancelado: "Cancelado",
 };
 
-const STATUS_CLASS: Record<LogOrcamentoStatus, string> = {
+const STATUS_TONE: Record<LogOrcamentoStatus, BadgeTone> = {
   aberto: "transfer",
   aguardando_aprovacao: "warn",
   fechado: "ok",
-  cancelado: "",
+  cancelado: "neutral",
 };
 
+const STATUS_ICON = { aberto: Clock5, aguardando_aprovacao: Clock5, fechado: CheckCircle2, cancelado: XCircle };
+
 function StatusBadge({ status }: { status: LogOrcamentoStatus }) {
-  return <span className={`status ${STATUS_CLASS[status]}`}>{STATUS_LABEL[status]}</span>;
+  return (
+    <Badge icon={STATUS_ICON[status]} tone={STATUS_TONE[status]}>
+      {STATUS_LABEL[status]}
+    </Badge>
+  );
 }
 
 type ItemCarrinho = {

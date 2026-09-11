@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { RefreshCw, Search, ShieldQuestion } from "lucide-react";
 import { api, ApiError } from "../api";
 import type { MktAccount, MktSyncEvent, MktSyncFailure } from "./types";
-import { Empty, MARKETPLACE_LABEL, Panel, dt } from "./ui";
+import { ConexaoBadge, Empty, MARKETPLACE_LABEL, Panel, dt } from "./ui";
 
 export default function SincronizacaoTab({ refreshKey, onAtualizado }: { refreshKey: number; onAtualizado: () => void }) {
   const [contas, setContas] = useState<MktAccount[]>([]);
@@ -94,9 +94,7 @@ export default function SincronizacaoTab({ refreshKey, onAtualizado }: { refresh
                     <small>{c.apelido || c.nome_interno}</small>
                   </td>
                   <td>
-                    <span className={`status ${c.status_conexao === "conectada" ? "ok" : c.status_conexao === "nao_configurada" ? "" : "warn"}`}>
-                      {c.status_conexao === "nao_configurada" ? "Não configurada" : c.status_conexao}
-                    </span>
+                    <ConexaoBadge status={c.status_conexao} />
                   </td>
                   <td>{dt(c.ultima_sincronizacao)}</td>
                   <td className="num">{c.pedidos_importados ?? 0}</td>

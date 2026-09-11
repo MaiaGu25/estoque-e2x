@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Search } from "lucide-react";
+import { Search, TriangleAlert } from "lucide-react";
 import { api } from "../api";
+import { Badge } from "../Badge";
 import type { MktStockPart } from "./types";
-import { ESTOQUE_SITUACAO_CLASS, ESTOQUE_SITUACAO_LABEL, Empty, Panel, dt, fmt } from "./ui";
+import { EstoqueSituacaoBadge, Empty, Panel, dt, fmt } from "./ui";
 
 export default function EstoqueTab({ refreshKey }: { refreshKey: number }) {
   const [pecas, setPecas] = useState<MktStockPart[]>([]);
@@ -57,8 +58,12 @@ export default function EstoqueTab({ refreshKey }: { refreshKey: number }) {
                   <td className="num">{fmt(p.reserved_quantity)}</td>
                   <td className="num">{fmt(p.saldo_disponivel)}</td>
                   <td>
-                    <span className={`status ${ESTOQUE_SITUACAO_CLASS[p.situacao]}`}>{ESTOQUE_SITUACAO_LABEL[p.situacao]}</span>
-                    {p.nao_vinculado && <span className="status warn" style={{ marginLeft: 4 }}>Sem anúncio</span>}
+                    <EstoqueSituacaoBadge situacao={p.situacao} />
+                    {p.nao_vinculado && (
+                      <Badge icon={TriangleAlert} tone="warn">
+                        Sem anúncio
+                      </Badge>
+                    )}
                   </td>
                   <td>{dt(p.ultima_movimentacao)}</td>
                 </tr>

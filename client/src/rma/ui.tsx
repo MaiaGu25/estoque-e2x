@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { Circle, X } from "lucide-react";
 import type { RmaOpcao, RmaOpcoesPorTipo, RmaTipoOpcao } from "./types";
 
 export const dt = (s: string | null) => (s ? new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "-");
@@ -25,8 +25,10 @@ export function OpcaoBadge({ opcao, valor, opcoesLista }: { opcao?: RmaOpcao | n
   const encontrada = opcao || opcoesLista?.find((o) => o.valor === valor);
   const rotulo = encontrada?.rotulo || valor || "-";
   const cor = encontrada?.cor || "#94a3b8";
+  const corTexto = corTextoContraste(cor);
   return (
-    <span className="rma-badge" style={{ backgroundColor: cor, color: corTextoContraste(cor) }}>
+    <span className="rma-badge" style={{ backgroundColor: cor, color: corTexto }}>
+      <Circle size={8} fill={corTexto} stroke="none" />
       {rotulo}
     </span>
   );

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { CheckCircle2 } from "lucide-react";
 import { api } from "../api";
+import { Badge } from "../Badge";
 import type { MktAlert } from "./types";
-import { Empty, Panel, SEVERIDADE_CLASS, SEVERIDADE_LABEL, dt } from "./ui";
+import { Empty, Panel, SeveridadeBadge, dt } from "./ui";
 
 export default function AlertasTab({ refreshKey, onAtualizado }: { refreshKey: number; onAtualizado: () => void }) {
   const [alertas, setAlertas] = useState<MktAlert[]>([]);
@@ -47,7 +49,7 @@ export default function AlertasTab({ refreshKey, onAtualizado }: { refreshKey: n
         <div className="cart">
           {alertas.map((a) => (
             <div key={a.id} className="cart-row" style={{ gridTemplateColumns: "auto 1fr auto" }}>
-              <span className={`status ${SEVERIDADE_CLASS[a.severidade]}`}>{SEVERIDADE_LABEL[a.severidade]}</span>
+              <SeveridadeBadge severidade={a.severidade} />
               <span>
                 <b>{a.titulo}</b>
                 <small>{a.descricao}</small>
@@ -68,7 +70,7 @@ export default function AlertasTab({ refreshKey, onAtualizado }: { refreshKey: n
                   </button>
                 </div>
               )}
-              {a.status === "resolvido" && <span className="status ok">Resolvido</span>}
+              {a.status === "resolvido" && <Badge icon={CheckCircle2} tone="ok">Resolvido</Badge>}
             </div>
           ))}
         </div>
