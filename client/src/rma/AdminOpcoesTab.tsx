@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
+import { AtivoBadge } from "../Badge";
 import type { RmaOpcao, RmaOpcoesPorTipo, RmaTipoOpcao } from "./types";
 import { rmaApi } from "./rmaApi";
 import { Panel } from "./ui";
@@ -143,8 +144,8 @@ function LinhaOpcao({
       </td>
       <td className="code">{opcao.valor}</td>
       <td>
-        <button className={opcao.ativo ? "status ok" : "status warn"} onClick={() => onAlternar(opcao)} style={{ border: 0, cursor: "pointer" }}>
-          {opcao.ativo ? "Ativa" : "Inativa"}
+        <button onClick={() => onAlternar(opcao)} style={{ border: 0, background: "none", padding: 0, cursor: "pointer" }}>
+          <AtivoBadge ativo={!!opcao.ativo} rotuloAtivo="Ativa" rotuloInativo="Inativa" />
         </button>
       </td>
       <td></td>

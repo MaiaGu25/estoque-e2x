@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Ban, PackageCheck, Pause, Play, PlusCircle, Truck } from "lucide-react";
+import { ArrowLeft, Ban, CheckCircle2, PackageCheck, Pause, Play, PlusCircle, Truck, TriangleAlert } from "lucide-react";
 import { api, ApiError } from "../../api";
 import type { LogEvento, LogPedidoSaida, LogPedidoSaidaItem, LogSeparacaoDivergencia } from "../../types";
+import { Badge } from "../../Badge";
 import { Empty, Panel, dt } from "../ui";
-import { CANAL_LABEL, DIVERGENCIA_SEPARACAO_TIPO_LABEL, PEDIDO_STATUS_CLASS, PEDIDO_STATUS_LABEL } from "./ui";
+import { CANAL_LABEL, DIVERGENCIA_SEPARACAO_TIPO_LABEL, PedidoStatusBadge } from "./ui";
 import SeparacaoItemLinha from "./SeparacaoItemLinha";
 
 type Detalhe = { pedido: LogPedidoSaida; itens: LogPedidoSaidaItem[]; divergencias: LogSeparacaoDivergencia[]; eventos: LogEvento[] };
@@ -98,7 +99,7 @@ export default function SeparacaoDetalhe({
         subtitle={`${CANAL_LABEL[pedido.canal]}${pedido.cliente_nome ? " · " + pedido.cliente_nome : ""}${pedido.vendedor ? " · " + pedido.vendedor : ""}`}
       >
         <div style={{ marginBottom: 10 }}>
-          <span className={`status ${PEDIDO_STATUS_CLASS[pedido.status]}`}>{PEDIDO_STATUS_LABEL[pedido.status]}</span>
+          <PedidoStatusBadge status={pedido.status} />
         </div>
 
         <div className="toolbar">
@@ -185,10 +186,10 @@ export default function SeparacaoDetalhe({
                         Resolver
                       </button>
                     ) : (
-                      <span className="status warn">Aberta</span>
+                      <Badge icon={TriangleAlert} tone="warn">Aberta</Badge>
                     )
                   ) : (
-                    <span className="status ok">Resolvida</span>
+                    <Badge icon={CheckCircle2} tone="ok">Resolvida</Badge>
                   )}
                 </div>
               ))}

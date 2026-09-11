@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import type { TecInventarioDetalhe, TecInventarioResumoHistorico } from "../types";
+import { Badge, type BadgeTone } from "../Badge";
 import { dt, Empty, fmtSinal, Modal, SituacaoBadge } from "./ui";
 import { inventarioApi } from "./inventarioApi";
 
@@ -9,10 +10,15 @@ const STATUS_LABEL: Record<string, string> = {
   concluido: "Concluído",
   cancelado: "Cancelado",
 };
-const STATUS_CLASS: Record<string, string> = {
+const STATUS_TONE: Record<string, BadgeTone> = {
   em_andamento: "warn",
   concluido: "ok",
-  cancelado: "",
+  cancelado: "neutral",
+};
+const STATUS_ICON: Record<string, typeof RefreshCw> = {
+  em_andamento: RefreshCw,
+  concluido: CheckCircle2,
+  cancelado: XCircle,
 };
 
 // Inventários já finalizados/cancelados não têm botão de editar nem
@@ -49,7 +55,9 @@ export default function InventarioHistorico({ refreshKey }: { refreshKey: number
                   <b className="code">{inv.numero}</b>
                 </td>
                 <td>
-                  <span className={`status ${STATUS_CLASS[inv.status]}`}>{STATUS_LABEL[inv.status]}</span>
+                  <Badge icon={STATUS_ICON[inv.status]} tone={STATUS_TONE[inv.status]}>
+                    {STATUS_LABEL[inv.status]}
+                  </Badge>
                 </td>
                 <td>{inv.createdByNome || "—"}</td>
                 <td>{inv.finalizedByNome || "—"}</td>

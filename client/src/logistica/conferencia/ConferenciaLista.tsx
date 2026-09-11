@@ -3,7 +3,7 @@ import { Plus, Search } from "lucide-react";
 import { api } from "../../api";
 import type { LogConferencia } from "../../types";
 import { Empty, Panel } from "../ui";
-import { CONFERENCIA_STATUS_LABEL, CONFERENCIA_STATUS_CLASS } from "./ui";
+import { CONFERENCIA_STATUS_LABEL, ConferenciaStatusBadge } from "./ui";
 import NovaConferenciaModal from "./NovaConferenciaModal";
 
 export default function ConferenciaLista({
@@ -65,7 +65,7 @@ export default function ConferenciaLista({
               <button key={c.id} className="order-card" onClick={() => onAbrir(c.id)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
                   <b className="code">{c.numero}</b>
-                  <span className={`status ${CONFERENCIA_STATUS_CLASS[c.status]}`}>{CONFERENCIA_STATUS_LABEL[c.status]}</span>
+                  <ConferenciaStatusBadge status={c.status} />
                 </div>
                 <p style={{ margin: "6px 0 2px" }}>{c.fornecedor_nome}</p>
                 <small>

@@ -155,9 +155,23 @@ button { cursor: pointer; }
 .pf-badge-aceita{background:#ecfdf5;color:#289b56}
 .pf-badge-recusada{background:#fff1f2;color:#d5504a}
 
+/* Selo de status genérico (ícone + pílula colorida) - mesmo visual do
+   .pf-badge acima, usado pelos outros módulos via o componente Badge
+   (client/src/Badge.tsx) escolhendo um ícone e um destes tons. */
+.badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:12px;font-weight:600;font-size:12.5px;white-space:nowrap;line-height:1}
+.badge svg{width:14px;height:14px;flex:none}
+.badge-ok{background:#ecfdf5;color:#289b56}
+.badge-warn{background:#fff7ed;color:#ea9a3d}
+.badge-danger{background:#fff1f2;color:#d5504a}
+.badge-info{background:#e0f2fe;color:#008af5}
+.badge-transfer{background:#e3edfd;color:#1857c4}
+.badge-adjust{background:#f1eaff;color:#6a3fc4}
+.badge-neutral{background:#f4f4f5;color:#71717a}
+
 /* RMA/SAC - selo de status/opção com cor administrável, passos do wizard
    e campo de leitura de etiqueta */
-.rma-badge{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;font-weight:700;font-size:11px;white-space:nowrap;line-height:1}
+.rma-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;font-weight:700;font-size:11px;white-space:nowrap;line-height:1}
+.rma-badge svg{flex:none}
 .rma-steps{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 .rma-step{border:1px solid #dce6e0;background:white;color:#5c7267;border-radius:10px;padding:9px 13px;font-weight:700;font-size:12px}
 .rma-step.active{background:#0caf65;border-color:#0caf65;color:white}

@@ -1,5 +1,6 @@
-import { X } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpFromLine, CheckCircle2, CircleDashed, SlidersHorizontal, TriangleAlert, X } from "lucide-react";
 import type { LogSituacao, LogTipoOperacao } from "../types";
+import { Badge, type BadgeTone } from "../Badge";
 
 export const fmt = (n: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(n);
 export const dt = (s: string) => new Date(s.replace(" ", "T") + "Z").toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
@@ -11,15 +12,21 @@ export const SITUACAO_LABEL: Record<LogSituacao, string> = {
   inativo: "Inativo",
 };
 
-export const SITUACAO_CLASS: Record<LogSituacao, string> = {
+export const SITUACAO_TONE: Record<LogSituacao, BadgeTone> = {
   disponivel: "ok",
   baixo: "warn",
   sem_estoque: "warn",
-  inativo: "",
+  inativo: "neutral",
 };
 
+const SITUACAO_ICON = { disponivel: CheckCircle2, baixo: TriangleAlert, sem_estoque: TriangleAlert, inativo: CircleDashed };
+
 export function SituacaoBadge({ situacao }: { situacao: LogSituacao }) {
-  return <span className={`status ${SITUACAO_CLASS[situacao]}`}>{SITUACAO_LABEL[situacao]}</span>;
+  return (
+    <Badge icon={SITUACAO_ICON[situacao]} tone={SITUACAO_TONE[situacao]}>
+      {SITUACAO_LABEL[situacao]}
+    </Badge>
+  );
 }
 
 export const TIPO_LABEL: Record<LogTipoOperacao, string> = {
@@ -29,15 +36,21 @@ export const TIPO_LABEL: Record<LogTipoOperacao, string> = {
   AJUSTE: "Ajuste",
 };
 
-export const TIPO_CLASS: Record<LogTipoOperacao, string> = {
+export const TIPO_TONE: Record<LogTipoOperacao, BadgeTone> = {
   ENTRADA: "ok",
   SAIDA: "warn",
   TRANSFERENCIA: "transfer",
   AJUSTE: "adjust",
 };
 
+const TIPO_ICON = { ENTRADA: ArrowDownToLine, SAIDA: ArrowUpFromLine, TRANSFERENCIA: ArrowLeftRight, AJUSTE: SlidersHorizontal };
+
 export function TipoBadge({ tipo }: { tipo: LogTipoOperacao }) {
-  return <span className={`status ${TIPO_CLASS[tipo]}`}>{TIPO_LABEL[tipo]}</span>;
+  return (
+    <Badge icon={TIPO_ICON[tipo]} tone={TIPO_TONE[tipo]}>
+      {TIPO_LABEL[tipo]}
+    </Badge>
+  );
 }
 
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {

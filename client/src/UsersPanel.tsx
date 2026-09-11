@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { KeyRound, Plus, ShieldCheck, UserX, UserCheck } from "lucide-react";
 import { api } from "./api";
+import { AtivoBadge } from "./Badge";
 import type { User } from "./types";
 
 export default function UsersPanel({ currentUser }: { currentUser: User }) {
@@ -72,7 +73,7 @@ export default function UsersPanel({ currentUser }: { currentUser: User }) {
                   </select>
                 </td>
                 <td>
-                  <span className={u.active ? "status ok" : "status warn"}>{u.active ? "Ativo" : "Inativo"}</span>
+                  <AtivoBadge ativo={u.active} />
                 </td>
                 <td style={{ display: "flex", gap: 6 }}>
                   <button className="icon-btn" title="Redefinir senha" onClick={() => setResetTarget(u)}>

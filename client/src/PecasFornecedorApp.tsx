@@ -1118,6 +1118,24 @@ function PedidoDetalheModal({
     }
   };
 
+  const [excluindoRecusadas, setExcluindoRecusadas] = useState(false);
+  const pecasRecusadas = pedido?.pecas.filter((p) => p.decisao === "recusada").length || 0;
+
+  const excluirRecusadas = async () => {
+    if (!confirm(`Excluir ${pecasRecusadas} peça${pecasRecusadas === 1 ? "" : "s"} recusada${pecasRecusadas === 1 ? "" : "s"} deste pedido? Essa ação não pode ser desfeita.`)) return;
+    setExcluindoRecusadas(true);
+    setErr("");
+    try {
+      await api.del(`/api/pecas-fornecedor/pedidos/${numero}/recusadas`);
+      await carregar();
+      onAtualizado();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Não foi possível excluir as peças recusadas.");
+    } finally {
+      setExcluindoRecusadas(false);
+    }
+  };
+
   const excluir = async () => {
     if (!confirm(`Excluir o pedido ${numero} e todas as ${pedido?.pecas.length || 0} peças dele? Essa ação não pode ser desfeita.`)) return;
     setExcluindo(true);
@@ -1185,14 +1203,21 @@ function PedidoDetalheModal({
           <p className="cart-empty" style={{ textAlign: "left", padding: 0, margin: 0 }}>
             Marque o que o fornecedor aceitou trocar
           </p>
-          <button
-            className="secondary"
-            onClick={() => setAdicionando(true)}
-            disabled={pedido.status === "concluido"}
-            title={pedido.status === "concluido" ? "Pedido concluído, não é possível adicionar peças." : undefined}
-          >
-            <Plus size={15} /> Adicionar peças
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {!!pecasRecusadas && (
+              <button className="secondary" onClick={excluirRecusadas} disabled={excluindoRecusadas}>
+                <XCircle size={15} /> {excluindoRecusadas ? "Excluindo…" : `Excluir recusadas (${pecasRecusadas})`}
+              </button>
+            )}
+            <button
+              className="secondary"
+              onClick={() => setAdicionando(true)}
+              disabled={pedido.status === "concluido"}
+              title={pedido.status === "concluido" ? "Pedido concluído, não é possível adicionar peças." : undefined}
+            >
+              <Plus size={15} /> Adicionar peças
+            </button>
+          </div>
         </div>
         <div className="table-card" style={{ marginBottom: 16 }}>
           <table>

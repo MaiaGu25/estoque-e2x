@@ -3,7 +3,7 @@ import { ArrowLeft, Ban, Pause, Play, PlusCircle } from "lucide-react";
 import { api, ApiError } from "../../api";
 import type { LogConferencia, LogConferenciaDivergencia, LogConferenciaItem, LogEvento, LogMapa, User } from "../../types";
 import { Empty, Panel, dt } from "../ui";
-import { CONFERENCIA_STATUS_CLASS, CONFERENCIA_STATUS_LABEL, DIVERGENCIA_TIPO_LABEL } from "./ui";
+import { ConferenciaStatusBadge, DIVERGENCIA_TIPO_LABEL, DivergenciaStatusBadge } from "./ui";
 import ConferenciaItemLinha from "./ConferenciaItemLinha";
 
 type Detalhe = { conferencia: LogConferencia; itens: LogConferenciaItem[]; divergencias: LogConferenciaDivergencia[]; eventos: LogEvento[] };
@@ -98,7 +98,7 @@ export default function ConferenciaDetalhe({
         subtitle={`Fornecedor: ${conferencia.fornecedor_nome}${conferencia.fornecedor_contato ? " · " + conferencia.fornecedor_contato : ""}`}
       >
         <div style={{ marginBottom: 10 }}>
-          <span className={`status ${CONFERENCIA_STATUS_CLASS[conferencia.status]}`}>{CONFERENCIA_STATUS_LABEL[conferencia.status]}</span>
+          <ConferenciaStatusBadge status={conferencia.status} />
         </div>
         <div className="toolbar">
           {conferencia.status === "aguardando_conferencia" && (
@@ -168,16 +168,12 @@ export default function ConferenciaDetalhe({
                     <small>{d.descricao}</small>
                     {d.status === "resolvida" && <small>Resolvida: {d.resolucao}</small>}
                   </span>
-                  {d.status === "aberta" ? (
-                    isAdmin ? (
-                      <button className="secondary" onClick={() => resolverDivergencia(d.id)}>
-                        Resolver
-                      </button>
-                    ) : (
-                      <span className="status warn">Aberta</span>
-                    )
+                  {d.status === "aberta" && isAdmin ? (
+                    <button className="secondary" onClick={() => resolverDivergencia(d.id)}>
+                      Resolver
+                    </button>
                   ) : (
-                    <span className="status ok">Resolvida</span>
+                    <DivergenciaStatusBadge status={d.status} />
                   )}
                 </div>
               ))}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, Search } from "lucide-react";
+import { AtivoBadge } from "../Badge";
 import type { CfFiltroFoto, CfFiltroStatus, CfListaProdutos } from "./types";
 import { centralFotosApi } from "./api";
 import { Empty, Field, Modal, PlaceholderFoto } from "./ui";
@@ -124,7 +125,7 @@ export default function ProdutosTab({ isAdmin, refreshKey, onAlterado }: { isAdm
               <span>
                 {p.qtdFotos} foto{p.qtdFotos === 1 ? "" : "s"}
               </span>
-              <span className={`status ${p.ativo ? "ok" : "warn"}`}>{p.ativo ? "Ativo" : "Inativo"}</span>
+              <AtivoBadge ativo={p.ativo} />
             </footer>
           </button>
         ))}

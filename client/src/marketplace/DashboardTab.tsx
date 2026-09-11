@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { api } from "../api";
 import type { MktAccount, MktComparacaoLoja, MktDashboard, MktMarketplace, MktPeriodo } from "./types";
-import { Empty, MARKETPLACE_LABEL, Panel, Stat, dt, fmt } from "./ui";
+import { ConexaoBadge, Empty, MARKETPLACE_LABEL, Panel, Stat, dt, fmt } from "./ui";
 
 const PERIODOS: { id: MktPeriodo; label: string }[] = [
   { id: "hoje", label: "Hoje" },
@@ -149,9 +149,7 @@ export default function DashboardTab({ refreshKey }: { refreshKey: number }) {
                         {MARKETPLACE_LABEL[c.marketplace]} · {c.apelido || c.nome_interno}
                       </td>
                       <td>
-                        <span className={`status ${c.status_conexao === "conectada" ? "ok" : c.status_conexao === "nao_configurada" ? "" : "warn"}`}>
-                          {c.status_conexao === "nao_configurada" ? "Não configurada" : c.status_conexao}
-                        </span>
+                        <ConexaoBadge status={c.status_conexao} />
                       </td>
                       <td>{dt(c.ultima_sincronizacao)}</td>
                     </tr>

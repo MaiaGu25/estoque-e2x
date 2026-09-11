@@ -440,6 +440,30 @@ router.delete("/pedidos/:numero", requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Limpa do pedido só as peças já marcadas como recusadas pelo fornecedor -
+// usado antes de gerar/enviar a planilha, pra ela sair só com o que
+// realmente segue no pedido. Não precisa de admin (bem menos arriscado
+// que excluir o pedido inteiro): são peças que o fornecedor já decidiu
+// não trocar.
+router.delete("/pedidos/:numero/recusadas", (req, res) => {
+  const numero = req.params.numero;
+  const pedido = db.prepare("SELECT numero FROM pedidos_fornecedor WHERE numero = ?").get(numero);
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
+
+  const run = transaction(() => {
+    const recusadas = db.prepare("SELECT id FROM pecas_fornecedor WHERE pedido_numero = ? AND decisao = 'recusada'").all(numero);
+    for (const peca of recusadas) {
+      db.prepare("DELETE FROM pecas_fornecedor_eventos WHERE peca_id = ?").run(peca.id);
+    }
+    db.prepare("DELETE FROM pecas_fornecedor WHERE pedido_numero = ? AND decisao = 'recusada'").run(numero);
+    return recusadas.length;
+  });
+
+  const excluidas = run();
+  broadcast("pecasFornecedor");
+  res.json({ ok: true, excluidas });
+});
+
 router.get("/planilha", async (req, res) => {
   const { pedidoNumero, status, fornecedorId, busca } = req.query;
   const where = [];

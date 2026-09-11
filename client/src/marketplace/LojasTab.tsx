@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus } from "lucide-react";
+import { Ban, Plus } from "lucide-react";
 import { api, ApiError } from "../api";
+import { Badge } from "../Badge";
 import type { MktAccount, MktMarketplace } from "./types";
-import { Empty, MARKETPLACE_LABEL, Modal, Panel, dt } from "./ui";
+import { ConexaoBadge, Empty, MARKETPLACE_LABEL, Modal, Panel, dt } from "./ui";
 
 export default function LojasTab({ refreshKey, onAtualizado }: { refreshKey: number; onAtualizado: () => void }) {
   const [contas, setContas] = useState<MktAccount[]>([]);
@@ -54,10 +55,12 @@ export default function LojasTab({ refreshKey, onAtualizado }: { refreshKey: num
                   </td>
                   <td className="code">{c.identificador_externo || "-"}</td>
                   <td>
-                    <span className={`status ${c.status_conexao === "conectada" ? "ok" : c.status_conexao === "nao_configurada" ? "" : "warn"}`}>
-                      {c.status_conexao === "nao_configurada" ? "Não configurada" : c.status_conexao}
-                    </span>
-                    {!c.ativa && <span className="status" style={{ marginLeft: 4 }}>Inativa</span>}
+                    <ConexaoBadge status={c.status_conexao} />
+                    {!c.ativa && (
+                      <Badge icon={Ban} tone="neutral">
+                        Inativa
+                      </Badge>
+                    )}
                   </td>
                   <td>{dt(c.ultima_sincronizacao)}</td>
                   <td className="num">{c.pedidos_importados ?? 0}</td>

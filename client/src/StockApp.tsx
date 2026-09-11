@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, BarChart3, Bookmark, Boxes, ChevronRight,
+  Archive, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, BarChart3, Bookmark, Boxes, CheckCircle2, ChevronRight,
   ClipboardList, Download, History, LayoutDashboard, LogOut, Menu, PackageCheck, PackagePlus,
   Pencil, Plus, RefreshCw, Search, ShieldCheck, TriangleAlert, Users as UsersIcon, X,
 } from "lucide-react";
 import { api } from "./api";
+import { Badge } from "./Badge";
 import type { Data, Member, Movement, Order, Part, ReservedMovement, User } from "./types";
 import UsersPanel from "./UsersPanel";
 import { useRealtime } from "./useRealtime";
@@ -253,9 +254,9 @@ export default function StockApp({ user, onLogout, onHome }: { user: User; onLog
                             <b>{fmt(p.quantity - p.reserved_quantity)}</b>
                           </td>
                           <td>
-                            <span className={p.quantity - p.reserved_quantity <= p.minimum_stock ? "status warn" : "status ok"}>
+                            <Badge icon={p.quantity - p.reserved_quantity <= p.minimum_stock ? TriangleAlert : CheckCircle2} tone={p.quantity - p.reserved_quantity <= p.minimum_stock ? "warn" : "ok"}>
                               {p.quantity - p.reserved_quantity <= p.minimum_stock ? "Baixo" : "Disponível"}
-                            </span>
+                            </Badge>
                           </td>
                           {isAdmin && (
                             <td>
